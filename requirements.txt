@@ -1,0 +1,8 @@
+pip~=24.0
+attrs~=23.2.0
+distro~=1.9.0
+wheel~=0.42.0
+cryptography~=41.0.7
+pillow~=10.2.0
+Jinja2~=3.1.2
+pycryptodomex~=3.21.0

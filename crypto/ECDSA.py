@@ -108,7 +108,28 @@ def main():
     print(f"\nThe inverse of r_1 is: {inverse_r_fixed}")
 
     # Example of Nonce-reuse attack
-    # TODO
+    signature_fixed_nonce2 = ecdsa_sign(b"other_message", private_key, nonce)
+    r_fixed2, s_fixed2 = util.sigdecode_der(signature_fixed_nonce2, order_CURVE)
+
+    # Given the public key, two signatures with the same nonce, and two messages, one can recover the private key
+
+    p = order_CURVE
+
+    h_m1 = HASH_FUNC(message).digest()
+    h_m2 = HASH_FUNC(b"other_message").digest()
+
+    h_m1 = int.from_bytes(h_m1, byteorder='big')
+    h_m2 = int.from_bytes(h_m2, byteorder='big')
+
+    s1 = s_fixed
+    s2 = s_fixed2
+
+    r_inv = inverse_r_fixed
+
+    k = (invert(s1 - s2, p) * (h_m1 - h_m2)) % p
+    d = (r_inv * (s1 * k - h_m1)) % p
+    print(f"\nThe recovered k is: {k}")
+    print(f"The recovered private key is: {d}")
 
 if __name__ == "__main__":
     main()

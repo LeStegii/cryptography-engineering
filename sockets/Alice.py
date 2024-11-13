@@ -7,7 +7,6 @@ import traceback
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from jinja2.runtime import identity
 
 import utils
 

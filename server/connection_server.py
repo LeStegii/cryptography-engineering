@@ -2,7 +2,7 @@ import socket
 import sys
 import threading
 
-from server.constants import IDENTITY_PREFIX
+from constants import IDENTITY_PREFIX
 
 HOST = '127.0.0.1' if len(sys.argv) < 2 else sys.argv[1]
 PORT = 25566 if len(sys.argv) < 3 else int(sys.argv[2])

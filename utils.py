@@ -11,6 +11,7 @@ def generate_ecdh_key_pair(group):
     public_key = private_key.public_key()
     return private_key, public_key
 
+
 # Compute the shared secret using ECDH
 def compute_ecdh_shared_secret(private_key, peer_public_key):
     shared_secret = private_key.exchange(ec.ECDH(), peer_public_key)
@@ -23,6 +24,7 @@ def to_bytes(key):
         format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
 
+
 # HKDF to derive symmetric key from shared secret
 def derive_key_from_shared_secret(shared_secret, salt=None, info=b"handshake data"):
     if salt is None:
@@ -34,3 +36,10 @@ def derive_key_from_shared_secret(shared_secret, salt=None, info=b"handshake dat
         info=info,
     ).derive(shared_secret)
     return derived_key
+
+
+def printable_key(key):
+    return key.public_bytes(
+        encoding=serialization.Encoding.PEM,  # PEM format
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )

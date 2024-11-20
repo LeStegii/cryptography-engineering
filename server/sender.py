@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 import utils
-from server.constants import REQUEST_PREFIX, PK, MESSAGE_PREFIX, ANSWER_PREFIX, IDENTITY_PREFIX
+from constants import REQUEST_PREFIX, PK, MESSAGE_PREFIX, ANSWER_PREFIX, IDENTITY_PREFIX
 
 HOST = '127.0.0.1' if len(sys.argv) < 3 else sys.argv[2]
 PORT = 25566 if len(sys.argv) < 4 else int(sys.argv[3])

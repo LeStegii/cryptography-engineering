@@ -17,7 +17,12 @@ This has been implemented in [`crypto/hashed_elgamal.py`](crypto/hashed_elgamal.
    2. Program Alice -- g^x --> Program Bob
    3. Program Alice <-- g^y -- Program Bob
 
-This has been added to [`crypto/Example_DH_KDF_AES_AEAD.py`](crypto/Example_DH_KDF_AES_AEAD.py).
+This has been implemented in [`sockets/socket_user.py`](sockets/socket_user.py).
+Use the following commands to run the program:
+```bash
+python3 socket_user.py Alice 12345 54321
+python3 socket_user.py Bob 54321 12345
+```
 
 - Add a trusted server to help the key exchange procedure (using sockets, etc.)
    1. Program Alice <-- (connection) --> Server <-- (connection) --> Program Bob

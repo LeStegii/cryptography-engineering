@@ -9,3 +9,9 @@ If the message contains a request prefix as well as the identifier "public_key",
 
 To run the server, execute the following command:
 Ports, IPs and other configurations can be changed using runtime parameters.
+
+```bash
+python3 connection_server.py 
+python3 sender.py Alice
+python3 sender.py Bob
+```

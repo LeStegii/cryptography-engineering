@@ -63,3 +63,18 @@ TODO
    5. Finally, Bob sends (pk_bob, signature of pk_bob) to Alice. Alice verifies the signature using the server’s public key and, if valid, accepts pk_bob.
 
 TODO
+
+### Lecture 3
+
+#### Tasks
+1. Run the example code “HKDF.py”. Play with it and learn how to derive keys from a secret.
+![Task 1](resources/lecture3-task1.png)
+
+#### Homework
+- Implement the tweaked TLS handshake protocol (in the Client-Server setting using sockets)
+  - Use the simplified key schedule algorithm:
+  - ![Homework](resources/lecture3-homework1.png)
+  - ![Homework](resources/lecture3-homework2.png)
+  - ![Homework](resources/lecture3-homework3.png)
+
+- Bonus: Implement the same protocol, but this time use SHA3-512 as the hash function (for HKDF, HMAC, and the key schedule) and P-521 as the elliptic curve for key exchange. This should allow you to derive a key with 512 bits (64 bytes).

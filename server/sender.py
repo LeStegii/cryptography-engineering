@@ -80,6 +80,7 @@ def start_client(host, port):
     print(f"Generated keys: {client_private_key}, {client_public_key}")
 
     print("You can now start chatting with the server.")
+    print("Send a simple message or type 'request_pk' to start a key exchange.")
 
     receive_thread = threading.Thread(target=receive_message, args=(client_socket,))
     receive_thread.start()

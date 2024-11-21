@@ -1,9 +1,15 @@
 # Generate ECDH private and public key pair
 import os
+# Use SHA256 as the hash function used in DSA
+from hashlib import sha256 as HASH_FUNC
 
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from ecdsa import util  # pip install ecdsa
+
+
+# Use the curve P256, also known as SECP256R1, see https://neuromancer.sk/std/nist/P-256
 
 
 def generate_ecdh_key_pair(group):
@@ -43,3 +49,35 @@ def printable_key(key):
         encoding=serialization.Encoding.PEM,  # PEM format
         format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
+
+
+def ecdsa_sign(message, private_key, nonce=None):
+    signature = None
+    if nonce:  # If the nonce is explicitly specified
+        signature = private_key.sign(
+            message,
+            k=nonce,
+            hashfunc=HASH_FUNC,
+            sigencode=util.sigencode_der
+        )
+    else:
+        signature = private_key.sign(
+            message,
+            hashfunc=HASH_FUNC,
+            sigencode=util.sigencode_der
+        )
+    return signature
+
+
+# Function to verify ECDSA signature
+def ecdsa_verify(signature, message, public_key):
+    try:
+        is_valid = public_key.verify(
+            signature,
+            message,
+            hashfunc=HASH_FUNC,
+            sigdecode=util.sigdecode_der
+        )
+        return is_valid
+    except:
+        return False

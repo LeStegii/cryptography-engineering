@@ -15,3 +15,5 @@ python3 connection_server.py
 python3 sender.py Alice
 python3 sender.py Bob
 ```
+
+Send `request_pk` to initiate a key exchange from your side.

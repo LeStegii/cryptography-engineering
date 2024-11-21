@@ -17,7 +17,7 @@ This has been implemented in [`crypto/hashed_elgamal.py`](crypto/hashed_elgamal.
    2. Program Alice -- g^x --> Program Bob
    3. Program Alice <-- g^y -- Program Bob
 
-This has been implemented in [`sockets/socket_user.py`](sockets/socket_user.py).
+This has been implemented in [`homework1/lecture1/sockets/socket_user.py`](homework1/lecture1/sockets/socket_user.py).
 Use the following commands to run the program:
 ```bash
 python3 socket_user.py Alice 12345 54321
@@ -29,8 +29,8 @@ python3 socket_user.py Bob 54321 12345
    2. Program Alice -- g^x --> Server -- g^x --> Program Bob
    3. Program Alice <-- g^y -- Server <-- g^y -- Program Bob
 
-This has been added to [`server/`](server).
-For more information see the [README](server/README.md).
+This has been added to [`homework1/lecture1/server/`](homework1/lecture1/server).
+For more information see the [README](homework1/lecture1/server/README.md).
 
 ### Lecture 2
 
@@ -45,11 +45,11 @@ This can be done using [`crypto/ReadCert.py`](crypto/ReadCert.py).
 
 - Implement a man-in-the-middle attack (in one program) on DHKE.
 
-This has been implemented in [`mitm_attack/dhke_mitm.py`](mitm_attack/dhke_mitm.py).
+This has been implemented in [`homework1/lecture2/mitm_attack/dhke_mitm.py`](homework1/lecture2/mitm_attack/dhke_mitm.py).
 
 - Use the example code ‘ECDSA.py’ to demonstrate the nonce-reuse attack on ECDSA (i.e., recover the secret key given two valid signatures using the same randomness)
 
-This has been added to [`crypto/ECDSA.py`](crypto/ECDSA.py).
+This has been added to [`homework1/lecture2/ECDSA.py`](homework1/lecture2/ECDSA.py).
 
 - Bonus: Implement a man-in-the-middle attack on DHKE using sockets.
 
@@ -76,5 +76,7 @@ TODO
   - ![Homework](resources/lecture3-homework1.png)
   - ![Homework](resources/lecture3-homework2.png)
   - ![Homework](resources/lecture3-homework3.png)
+
+This has been implemented in [`homework2/lecture3/tls`](homework2/lecture3/tls).
 
 - Bonus: Implement the same protocol, but this time use SHA3-512 as the hash function (for HKDF, HMAC, and the key schedule) and P-521 as the elliptic curve for key exchange. This should allow you to derive a key with 512 bits (64 bytes).

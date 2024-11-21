@@ -6,7 +6,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.hashes import SHA256, Hash
 
 import utils
-from tls.HKDF import hkdf_extract, hkdf_expand
+from homework2.lecture3.tls.HKDF import hkdf_extract, hkdf_expand
 
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 54321
 client_port = int(sys.argv[2]) if len(sys.argv) > 2 else 12345

@@ -53,7 +53,8 @@ This has been added to [`homework1/lecture2/ECDSA.py`](homework1/lecture2/ECDSA.
 
 - Bonus: Implement a man-in-the-middle attack on DHKE using sockets.
 
-TODO 
+This has been implemented in [`homework1/lecture2/mitm_attack/sockets`](homework1/lecture2/mitm_attack/sockets).
+For more information see the [README](homework1/lecture2/mitm_attack/sockets/README.md).
 
 - Bonus: Use a trusted server and signatures to securely exchange public keys (using sockets): See next slide.
    1. Alice and Bob each have the server’s public key pre-installed, which they will use to verify the server's digital signatures.

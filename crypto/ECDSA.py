@@ -124,12 +124,16 @@ def main():
     s1 = s_fixed
     s2 = s_fixed2
 
-    r_inv = inverse_r_fixed
+    r_inv = invert(r_fixed, modulus) % modulus
 
     k = (invert(s1 - s2, p) * (h_m1 - h_m2)) % p
     d = (r_inv * (s1 * k - h_m1)) % p
     print(f"\nThe recovered k is: {k}")
     print(f"The recovered private key is: {d}")
+
+    print()
+    print(f"Is the recovered nonce correct? {k == nonce}")
+    print(f"Is the recovered private key correct? {d == private_key_int}")
 
 if __name__ == "__main__":
     main()

@@ -38,6 +38,7 @@ def main():
     print(f"Alice and Bob have the same key? {K_alice == K_bob} (should be False)")
     print(f"Alice and Attacker have the same key? {K_alice == K_attacker_alice} (should be True)")
     print(f"Bob and Attacker have the same key? {K_bob == K_attacker_bob} (should be True)")
+    print(f"Attacker's forged key for Alice and Bob have the same key? {K_alice == K_bob} (should be False)")
 
     # Bob encrypts a message with the shared key
     message = "Hello Alice!"
@@ -54,11 +55,6 @@ def main():
     # Alice decrypts the message
     message1 = aes_ctr_decrypt(K_alice, nonce1, cipher_bob_to_alice1)
     print(f"Message decrypted by Alice: {message1}")
-
-
-
-    # Alice encrypts the message with the shared key
-
 
 
 def aes_ctr_encrypt(derived_key, plaintext):

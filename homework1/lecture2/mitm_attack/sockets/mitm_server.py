@@ -57,7 +57,7 @@ def mitm_server():
         print(f"K'_Alice: {K_attacker_alice}")
         print(f"K'_Bob: {K_attacker_bob}")
 
-        # Forward encrypted message
+        # Decrypt encrypted message
         message_data = bob_conn.recv(4096)
         print("MITM received encrypted message from Bob.")
         nonce, cipher_bob_to_alice = message_data[:8], message_data[8:]

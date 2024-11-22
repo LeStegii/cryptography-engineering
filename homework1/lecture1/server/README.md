@@ -7,7 +7,7 @@ If the message contains a request prefix as well as the identifier "public_key",
 
 ## Usage
 
-To run the server, execute the following command:
+To run the server, execute the following commands:
 Ports, IPs and other configurations can be changed using runtime parameters.
 
 ```bash

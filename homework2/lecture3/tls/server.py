@@ -1,12 +1,15 @@
+import os
 import socket
 import sys
 
-from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.hashes import SHA256, Hash
+from ecdsa import NIST256p as CURVE
+from ecdsa import SigningKey
 
 import utils
-from homework2.lecture3.tls.HKDF import hkdf_extract, hkdf_expand
+from homework2.lecture3.tls.tls_utils import aes_gcm_encrypt, key_schedule_1, sigma_sign, key_schedule_2, hmac_mac, \
+    key_schedule_3, aes_gcm_decrypt, hmac_verify
 
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 54321
 client_port = int(sys.argv[2]) if len(sys.argv) > 2 else 12345
@@ -27,69 +30,90 @@ def receive() -> bytes:
     return rec
 
 
-def sha256(bytes: bytes) -> str:
-    data = bytes
-    digest = Hash(SHA256(), backend=default_backend())
-    digest.update(data)
-    hashed_bytes = digest.finalize()
-    return hashed_bytes.hex()
+sk_ca = SigningKey.generate(CURVE)
+pk_ca = sk_ca.get_verifying_key()
 
-
-def derive_hs(g_xy):
-    ES = hkdf_extract(0, 0)
-    dES = hkdf_expand(ES, sha256(b"DerivedES"))
-    HS = hkdf_extract(dES, sha256(g_xy))
-    return HS
-
-
-def key_schedule_1(g_xy):
-    HS = derive_hs(g_xy)
-    K1C = hkdf_expand(HS, sha256(b"ClientKE"))
-    K1S = hkdf_expand(HS, sha256(b"ServerKE"))
-    return K1C, K1S
-
-
-def key_schedule_2(nonce_c: bytes, X: bytes, nonce_s: bytes, Y: bytes, g_xy: bytes):
-    HS = derive_hs(g_xy)
-    ClientKC = hkdf_expand(HS, sha256(nonce_c + X + nonce_s + Y + b"ClientKC"))
-    ServerKC = hkdf_expand(HS, sha256(nonce_c + X + nonce_s + Y + b"ServerKC"))
-    K2C = hkdf_expand(HS, ClientKC)
-    K2S = hkdf_expand(HS, ServerKC)
-    return K2C, K2S
-
-
-def key_schedule_3(nonce_c: bytes, X: bytes, nonce_s: bytes, Y: bytes, g_xy: bytes, sigma, cert_pk_s, mac_s):
-    pass  # TODO
+sk_s = SigningKey.generate(CURVE)
+pk_s = sk_s.get_verifying_key()
 
 
 def main():
     global sock
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((host, port))
 
     print("Generating private and public key...")
-    sk_s, pk_s = utils.generate_ecdh_key_pair(ec.SECP256R1())
-    y = sk_s
-    Y = pk_s
-    cert_pk_s = utils.ecdsa_sign(pk_s, sk_s)
+    y, Y = utils.generate_ecdh_key_pair(ec.SECP256R1())
+    sigma_ca = utils.ecdsa_sign(
+        Y.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo),
+        sk_ca)
+    cert_pk_s = utils.to_bytes(Y) + b"|||" + sigma_ca
+
+    print("Sending certificate to the client...")
+    send(cert_pk_s)
 
     print("Waiting for the client's nonce and public key...")
     nonce_c = receive()
-    X = receive()
+    X = utils.from_bytes(receive())
 
     print("Received nonce and public key from the client!")
 
-    print("Generating keys...")
-
-    K1C, K1S = key_schedule_1(utils.to_bytes(X))
-
     print("Generating nonce (32 random bytes)...")
-    nonce_s = b"B" * 32
+    nonce_s = os.urandom(32)
 
     print("Sending nonce and public key to the client...")
 
     send(nonce_s)
     send(utils.to_bytes(Y))
+
+    print("Generating keys (1)...")
+
+    X_y = y.exchange(ec.ECDH(), X)
+    K1C, K1S = key_schedule_1(X_y)
+
+    print("Generating sigma...")
+    sigma = sigma_sign(sk_s, nonce_c, X, nonce_s, Y, cert_pk_s)
+
+    print("Generating keys (2)...")
+
+    K2C, K2S = key_schedule_2(nonce_c, X, nonce_s, Y, X_y)
+
+    print("Generating mac_s...")
+
+    mac_s = hmac_mac(K2S, nonce_c, X, nonce_s, Y, sigma, cert_pk_s, b"ServerMAC")
+
+    print("Generating keys (3)...")
+    K3C, K3S = key_schedule_3(nonce_c, X, nonce_s, Y, X_y, sigma, cert_pk_s, mac_s)
+
+    print("Sending cert, sigma and mac_s to the client using aes_gcm...")
+    iv, cipher, tag = aes_gcm_encrypt(K1S, cert_pk_s + b"$$$" + sigma + b"$$$" + mac_s, utils.to_bytes(Y))
+
+    print(iv)
+    print(cipher)
+    print(tag)
+
+    send(iv)
+    send(cipher)
+    send(tag)
+
+    print("Waiting for the client to send its mac the connection...")
+
+    iv_c = receive()
+    cipher_c = receive()
+    tag_c = receive()
+
+    print("Decrypting the client's mac...")
+
+    mac_c = aes_gcm_decrypt(K1S, iv_c, cipher_c, tag_c, Y)
+
+    print("Verifying the client's mac...")
+
+    if not hmac_verify(K2C, nonce_c + X + nonce_s + Y + sigma + b"ClientMac", mac_c):
+        print("Invalid mac!")
+        return
+
+    print("Connection established!")
 
 
 if __name__ == "__main__":

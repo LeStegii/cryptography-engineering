@@ -3,6 +3,7 @@ import os
 # Use SHA256 as the hash function used in DSA
 from hashlib import sha256 as HASH_FUNC
 
+from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -28,6 +29,13 @@ def to_bytes(key):
     return key.public_bytes(
         encoding=serialization.Encoding.PEM,  # PEM format
         format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+
+
+def from_bytes(key_bytes):
+    return serialization.load_pem_public_key(
+        key_bytes,
+        backend=default_backend()
     )
 
 

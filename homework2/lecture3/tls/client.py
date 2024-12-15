@@ -1,7 +1,6 @@
 import socket
 import sys
 
-from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from ecdsa import VerifyingKey
 
@@ -41,8 +40,6 @@ def main():
     print("Waiting for the server's certificate...")
     cert_pk_s = receive()
     Y, sigma_ca, pk_ca = cert_pk_s.split(b"|||")
-    print("pk_ca", pk_ca)
-    print("Received certificate from the server!")
 
     print("Sending nonce and public key to the server...")
     send(nonce_c)
@@ -52,7 +49,6 @@ def main():
     nonce_s = receive()
     Y = utils.from_bytes(receive())
     Y_x = x.exchange(ec.ECDH(), Y)
-    print("Received nonce and public key from the server!")
 
     print("Generating keys (1)...")
     K1C, K1S = key_schedule_1(Y_x)
@@ -64,29 +60,12 @@ def main():
     iv = receive()
     cipher = receive()
     tag = receive()
-
-    print("iv", iv)
-    print("cipher", cipher)
-    print("tag", tag)
-
     cert_pk_s_2, sigma_s, mac_s = aes_gcm_decrypt(K1S, iv, cipher, utils.to_bytes(Y), tag).split(b"$$$")
-    print("mac_s", mac_s)
-
-    print("Decrypted message.")
 
     print("Generating keys (3)...")
-    K3C, K3S = key_schedule_3(nonce_c, X, nonce_s, Y, Y_x, sigma_ca, cert_pk_s, mac_s)
+    K3C, K3S = key_schedule_3(nonce_c, utils.to_bytes(X), nonce_s, utils.to_bytes(Y), Y_x, sigma_s, cert_pk_s, mac_s)
 
-    print("Verifying certificates and macs...")
-
-    if not cert_pk_s_2 == cert_pk_s:
-        print("Certificate mismatch!")
-        return
-
-    print("cert_pk_s", cert_pk_s)
-    print("sigma_s", sigma_s)
-    print("Y", Y.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo))
-    print("pk_ca", pk_ca)
+    print("Verifying certificates, signatures and macs...")
 
     if not cert_pk_s == cert_pk_s_2:
         print("Certificate mismatch!")
@@ -103,7 +82,6 @@ def main():
     print("All checks passed!")
 
     print("Calculating mac_c...")
-
     mac_c = hmac_mac(K2C, nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + sigma_s + cert_pk_s + b"ClientMAC")
 
     print("Sending mac_c to the server using aes_gcm...")
@@ -112,6 +90,10 @@ def main():
     send(iv_c)
     send(cipher_c)
     send(tag_c)
+
+    print("Connection established!")
+    print("K3C:", K3C)
+    print("K3S:", K3S)
 
 
 if __name__ == "__main__":

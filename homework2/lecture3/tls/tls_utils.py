@@ -78,8 +78,8 @@ def key_schedule_3(nonce_c: bytes, X: bytes, nonce_s: bytes, Y: bytes, g_xy: byt
     HS = derive_hs(g_xy)
     dHS = hkdf_expand(HS, sha256(b"DerivedHS"))
     MS = hkdf_extract(dHS, bytes(0))
-    ClientSKH = sha256(nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + sigma + cert_pk_s + mac_s + b"ClientEncK")
-    ServerSKH = sha256(nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + sigma + cert_pk_s + mac_s + b"ServerEncK")
+    ClientSKH = sha256(nonce_c + X + nonce_s + Y + sigma + cert_pk_s + mac_s + b"ClientEncK")
+    ServerSKH = sha256(nonce_c + X + nonce_s + Y + sigma + cert_pk_s + mac_s + b"ServerEncK")
     K3C = hkdf_expand(MS, ClientSKH)
     K3S = hkdf_expand(MS, ServerSKH)
     return K3C, K3S

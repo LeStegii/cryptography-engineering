@@ -1,10 +1,11 @@
 import os
 import socket
 import sys
+from traceback import print_tb
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from ecdsa import NIST256p as CURVE
+from ecdsa import NIST256p as CURVE, VerifyingKey
 from ecdsa import SigningKey
 
 import utils
@@ -46,9 +47,11 @@ def main():
     print("Generating private and public key...")
     y, Y = utils.generate_ecdh_key_pair(ec.SECP256R1())
     sigma_ca = utils.ecdsa_sign(
-        Y.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo),
+        utils.to_bytes(Y),
         sk_ca)
-    cert_pk_s = utils.to_bytes(Y) + b"|||" + sigma_ca
+    cert_pk_s = utils.to_bytes(Y) + b"|||" + sigma_ca + b"|||" + pk_ca.to_der()
+
+    print("pk_ca", pk_ca.to_der())
 
     print("Sending certificate to the client...")
     send(cert_pk_s)
@@ -56,42 +59,42 @@ def main():
     print("Waiting for the client's nonce and public key...")
     nonce_c = receive()
     X = utils.from_bytes(receive())
-
     print("Received nonce and public key from the client!")
 
     print("Generating nonce (32 random bytes)...")
     nonce_s = os.urandom(32)
 
     print("Sending nonce and public key to the client...")
-
     send(nonce_s)
     send(utils.to_bytes(Y))
 
     print("Generating keys (1)...")
-
     X_y = y.exchange(ec.ECDH(), X)
     K1C, K1S = key_schedule_1(X_y)
 
     print("Generating sigma...")
-    sigma = sigma_sign(sk_s, nonce_c, X, nonce_s, Y, cert_pk_s)
+    sigma_s = sigma_sign(sk_s, nonce_c, X, nonce_s, Y, cert_pk_s)
 
     print("Generating keys (2)...")
-
     K2C, K2S = key_schedule_2(nonce_c, X, nonce_s, Y, X_y)
 
     print("Generating mac_s...")
-
-    mac_s = hmac_mac(K2S, nonce_c, X, nonce_s, Y, sigma, cert_pk_s, b"ServerMAC")
+    mac_s = hmac_mac(K2S, nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + sigma_s + cert_pk_s + b"ServerMAC")
 
     print("Generating keys (3)...")
-    K3C, K3S = key_schedule_3(nonce_c, X, nonce_s, Y, X_y, sigma, cert_pk_s, mac_s)
+    K3C, K3S = key_schedule_3(nonce_c, X, nonce_s, Y, X_y, sigma_s, cert_pk_s, mac_s)
 
     print("Sending cert, sigma and mac_s to the client using aes_gcm...")
-    iv, cipher, tag = aes_gcm_encrypt(K1S, cert_pk_s + b"$$$" + sigma + b"$$$" + mac_s, utils.to_bytes(Y))
+    iv, cipher, tag = aes_gcm_encrypt(K1S, cert_pk_s + b"$$$" + sigma_s + b"$$$" + mac_s, utils.to_bytes(Y))
 
-    print(iv)
-    print(cipher)
-    print(tag)
+    print("cert_pk_s", cert_pk_s)
+    print("sigma_s", sigma_s)
+    print("mac_s", mac_s)
+    print("Y", Y.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo))
+
+    print("iv", iv)
+    print("cipher", cipher)
+    print("tag", tag)
 
     send(iv)
     send(cipher)
@@ -105,11 +108,11 @@ def main():
 
     print("Decrypting the client's mac...")
 
-    mac_c = aes_gcm_decrypt(K1S, iv_c, cipher_c, tag_c, Y)
+    mac_c = aes_gcm_decrypt(K1C, iv_c, cipher_c, utils.to_bytes(Y), tag_c)
 
     print("Verifying the client's mac...")
 
-    if not hmac_verify(K2C, nonce_c + X + nonce_s + Y + sigma + b"ClientMac", mac_c):
+    if not hmac_verify(K2C, nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + sigma_s + cert_pk_s + b"ClientMAC", mac_c):
         print("Invalid mac!")
         return
 

@@ -89,9 +89,9 @@ def sigma_sign(sk, nonce_c, X, nonce_s, Y, cert_pk) -> bytes:
     return utils.ecdsa_sign(sha256(nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + cert_pk), sk)
 
 
-def hmac_mac(K, nonce_c, X, nonce_s, Y, sigma, cert_pk_s, message) -> bytes:
+def hmac_mac(K, message) -> bytes:
     h = hmac.HMAC(K, hashes.SHA256(), default_backend())
-    h.update(nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + sigma + cert_pk_s + message)
+    h.update(message)
     return h.finalize()
 
 

@@ -1,10 +1,12 @@
 import socket
 import sys
 
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+from ecdsa import VerifyingKey
 
-import utils
 from homework2.lecture3.tls.tls_utils import *
+from utils import ecdsa_verify
 
 port = int(sys.argv[2]) if len(sys.argv) > 2 else 12345
 target_port = int(sys.argv[3]) if len(sys.argv) > 3 else 54321
@@ -38,32 +40,24 @@ def main():
 
     print("Waiting for the server's certificate...")
     cert_pk_s = receive()
-    Y, sigma_ca = cert_pk_s.split(b"|||")
+    Y, sigma_ca, pk_ca = cert_pk_s.split(b"|||")
+    print("pk_ca", pk_ca)
     print("Received certificate from the server!")
 
     print("Sending nonce and public key to the server...")
-
     send(nonce_c)
     send(utils.to_bytes(X))
 
     print("Waiting for the server's nonce and public key...")
-
     nonce_s = receive()
     Y = utils.from_bytes(receive())
-
     Y_x = x.exchange(ec.ECDH(), Y)
-
     print("Received nonce and public key from the server!")
 
     print("Generating keys (1)...")
-
     K1C, K1S = key_schedule_1(Y_x)
 
-    print("Generating sigma...")
-    #sigma = sigma_sign(sk_s, nonce_c, X, nonce_s, Y, cert_pk_s)
-
     print("Generating keys (2)...")
-
     K2C, K2S = key_schedule_2(nonce_c, X, nonce_s, Y, Y_x)
 
     print("Decrypting message...")
@@ -71,11 +65,14 @@ def main():
     cipher = receive()
     tag = receive()
 
-    print(iv)
-    print(cipher)
-    print(tag)
+    print("iv", iv)
+    print("cipher", cipher)
+    print("tag", tag)
 
-    cert_pk_s_2, sigma, mac_s = aes_gcm_decrypt(K1S, iv, cipher, utils.to_bytes(Y), tag).split(b"$$$")
+    cert_pk_s_2, sigma_s, mac_s = aes_gcm_decrypt(K1S, iv, cipher, utils.to_bytes(Y), tag).split(b"$$$")
+    print("mac_s", mac_s)
+
+    print("Decrypted message.")
 
     print("Generating keys (3)...")
     K3C, K3S = key_schedule_3(nonce_c, X, nonce_s, Y, Y_x, sigma_ca, cert_pk_s, mac_s)
@@ -86,11 +83,20 @@ def main():
         print("Certificate mismatch!")
         return
 
-    #if not utils.ecdsa_verify(pk_ca, pk_s, sigma):
-    #    print("Invalid certificate!")
-    #    return
+    print("cert_pk_s", cert_pk_s)
+    print("sigma_s", sigma_s)
+    print("Y", Y.public_bytes(encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo))
+    print("pk_ca", pk_ca)
 
-    if not hmac_verify(K2S, nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + sigma + b"ServerMAC", mac_s):
+    if not cert_pk_s == cert_pk_s_2:
+        print("Certificate mismatch!")
+        return
+
+    if not ecdsa_verify(sigma_ca, utils.to_bytes(Y), VerifyingKey.from_der(pk_ca)):
+        print("Invalid signature!")
+        return
+
+    if not hmac_verify(K2S, nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + sigma_s + cert_pk_s + b"ServerMAC", mac_s):
         print("Invalid mac!")
         return
 
@@ -98,10 +104,10 @@ def main():
 
     print("Calculating mac_c...")
 
-    mac_c = hmac_mac(K2S, nonce_c, X, nonce_s, Y, sigma, cert_pk_s, b"ClientMAC")
+    mac_c = hmac_mac(K2C, nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + sigma_s + cert_pk_s + b"ClientMAC")
 
     print("Sending mac_c to the server using aes_gcm...")
-    iv_c, cipher_c, tag_c = aes_gcm_encrypt(K1C, mac_c, Y)
+    iv_c, cipher_c, tag_c = aes_gcm_encrypt(K1C, mac_c, utils.to_bytes(Y))
 
     send(iv_c)
     send(cipher_c)

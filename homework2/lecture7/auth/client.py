@@ -52,6 +52,7 @@ def start_ssl_client(host="localhost", port=12345, cafile="server.pem"):
                     username = message.split("=")[1]
                     if len(username) < 1:
                         print("Username cannot be empty!")
+                        continue
                     print(f"Sending login request for account: {username}")
                     send_message(ssock, message.encode())
                     response = receive_message(ssock)

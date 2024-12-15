@@ -80,16 +80,18 @@ def load_passwords(file):
     if not Path(file).exists():
         return
     with open(file, "r") as file:
-        lines = csv.reader(file)
-        for user, salt, hashed_password in lines:
-            salted_hashes[user] = (salt, hashed_password)
+        reader = csv.reader(file)
+        for line in reader:
+            if len(line) != 3:
+                continue
+            user, salt, hashed_password = line
+            salted_hashes[user] = (bytes.fromhex(salt), bytes.fromhex(hashed_password))
 
 def save_passwords(file):
-    with (open(file, "w") as file):
-        print(salted_hashes)
-        for user, salt_and_pw in salted_hashes.values():
-            salt, hashed_password = salt_and_pw # TODO: This doesnt work 
-            file.write(f"{user},{salt},{hashed_password}")
+    with (open(file, "w", newline="") as file):
+        writer = csv.writer(file)
+        for user, (salt, hashed_password) in salted_hashes.items():
+            writer.writerow([user, salt.hex(), hashed_password.hex()])
 
 if __name__ == "__main__":
     load_passwords("passwords.csv")

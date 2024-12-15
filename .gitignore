@@ -80,3 +80,4 @@ fabric.properties
 **/*.pem
 **/*.key
 **/passwords.csv
+**/peppering.txt

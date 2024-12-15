@@ -57,8 +57,8 @@ def start_ssl_client(host="localhost", port=12345, cafile="server.pem"):
                     send_message(ssock, message.encode())
                     response = receive_message(ssock)
                     print(f"Received response: {response}")
-                    if response == b"UserNotFound":
-                        print("User not found.")
+                    if response == b"UserNotFound" or response == b"UserBlocked":
+                        print("User not found or blocked.")
                     else:
                         print("Receiving salt...")
                         salt = response

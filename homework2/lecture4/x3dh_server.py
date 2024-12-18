@@ -6,7 +6,7 @@ from typing import Optional
 
 from ecdsa import VerifyingKey
 
-from homework2.lecture4.x3dh_utils import SPLIT
+from homework2.lecture4 import x3dh_utils
 
 
 class Server:
@@ -15,8 +15,8 @@ class Server:
         self.port: int = port
         self.server_socket: Optional[ssl.SSLSocket] = None
         self.connections: dict[tuple[str, int], ssl.SSLSocket] = {}  # List of connected clients (addr, socket)
-        self.registered_clients: dict[bytes, tuple[str, int]] = {}  # List of registered clients (username, addr)
-        self.key_bundles: dict[bytes, dict[str, VerifyingKey | bytes]] = {}  # List of key bundles (username, keys)
+        self.registered_clients: dict[str, tuple[str, int]] = {}  # List of registered clients (username, addr)
+        self.key_bundles: dict[str, dict[str, VerifyingKey | bytes]] = {}  # List of key bundles (username, keys)
 
     def start(self):
         try:
@@ -70,7 +70,7 @@ class Server:
             try:
                 if recipient.encode() not in self.registered_clients:
                     return b"NOT_REGISTERED"
-                self.connections[self.registered_clients[recipient.encode()]].send(message)
+                self.connections[self.registered_clients[recipient]].send(message)
                 return b"SUCCESS"
             except Exception:
                 traceback.print_exc()
@@ -80,46 +80,44 @@ class Server:
     def handle_client(self, client_socket: ssl.SSLSocket, addr: tuple[str, int]):
         try:
             while True:
-                message = client_socket.recv(1024)
+                message = client_socket.recv(4096)
                 if message:
-                    if message.startswith(b"REGISTER"):
-                        username_hex_bytes, ipk_hex_bytes, spk_hex_bytes, sigma_hex_bytes, opk_hex_bytes = message.split(SPLIT)[1:]
-                        print(username_hex_bytes.decode())
-                        username = bytes.fromhex(username_hex_bytes.decode())
+                    message = x3dh_utils.decode_message(message)
+                    if message["type"] == "REGISTER":
+
+                        username = message["username"]
                         if username in self.registered_clients:
-                            client_socket.send(b"ALREADY_REGISTERED")
+                            client_socket.send(x3dh_utils.encode_message({"type": "ALREADY_REGISTERED"}))
                             client_socket.close()
-                            print(
-                                f"Client {addr} tried to register as {username.decode()} but it is already registered.")
+                            print(f"Client {addr} tried to register as {username} but it is already registered.")
                             break
                         self.registered_clients[username] = (addr[0], int(addr[1]))
 
-                        print(ipk_hex_bytes.decode())
-                        print(spk_hex_bytes.decode())
-                        print(opk_hex_bytes.decode())
-
                         self.key_bundles[username] = {
-                            "IPK": VerifyingKey.from_pem(bytes.fromhex(ipk_hex_bytes.decode()).decode()),
-                            "SPK": VerifyingKey.from_pem(bytes.fromhex(spk_hex_bytes.decode()).decode()),
-                            "sigma": bytes.fromhex(sigma_hex_bytes.decode()),
-                            "OPK": VerifyingKey.from_pem(bytes.fromhex(opk_hex_bytes.decode()).decode())
+                            "IPK": message["IPK"],
+                            "SPK": message["SPK"],
+                            "sigma": message["sigma"],
+                            "OPK": message["OPK"]
                         }
 
-                        client_socket.send(b"REGISTERED")
+                        client_socket.send(x3dh_utils.encode_message({"type": "REGISTERED"}))
+                        print(f"Client {addr} registered as {username}.")
                         continue
 
-                    if message.startswith(b"X3DH_REQUEST"):
-                        username_hex_bytes = message.split(SPLIT)[1]
-                        username = bytes.fromhex(username_hex_bytes.decode())
-                        if username not in self.registered_clients:
-                            client_socket.send(b"NOT_REGISTERED")
-                            print(
-                                f"Client {addr} tried to request keys for {username.decode()} but this user isn't registered.")
-                            break
+                    if message["type"] == "X3DH_REQUEST":
+                        username = message["target"]
+                        if username not in self.registered_clients or username not in self.key_bundles:
+                            client_socket.send(x3dh_utils.encode_message({"type": "X3DH_KEY", "status": "FAILED"}))
+                            print(f"Client {addr} tried to request keys for {username} but this user isn't registered.")
+                            continue
 
-                        key_bundle = self.key_bundles[username]
-                        answer = f"X3DH_KEY{SPLIT}{username.hex()}{SPLIT}{key_bundle["IPK"].to_pem().hex()}{SPLIT}{key_bundle["SPK"].to_pem().hex()}{SPLIT}{key_bundle["sigma"].hex()}{SPLIT}{key_bundle["OPK"].to_pem().hex()}"
-                        client_socket.send(answer.encode())
+                        client_socket.send(x3dh_utils.encode_message({
+                            "type": "X3DH_KEY",
+                            "owner": username,
+                            "status": "SUCCESS",
+                            "key_bundle": self.key_bundles[username]
+                        }))
+                        print(f"Client {addr} requested keys for {username}.")
                         continue
 
                 else:

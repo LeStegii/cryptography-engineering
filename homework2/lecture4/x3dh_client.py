@@ -7,7 +7,8 @@ from typing import Optional
 from ecdsa import SigningKey, VerifyingKey
 
 from homework2.lecture4 import x3dh_utils
-from utils import ecdsa_sign
+from homework2.lecture4.x3dh_utils import SPLIT
+from utils import ecdsa_sign, ecdsa_verify
 
 
 class Client:
@@ -22,20 +23,13 @@ class Client:
         self.IPK: Optional[VerifyingKey] = None
         self.sk: Optional[SigningKey] = None
         self.SPK: Optional[VerifyingKey] = None
-        self.oks: list[SigningKey] = []
-        self.OPKs: list[VerifyingKey] = []
+        self.ok: Optional[SigningKey] = None
+        self.OPK: Optional[VerifyingKey] = None
         self.sigma: Optional[bytes] = None
 
-    def generate_keys(self):
-        self.ik, self.IPK = x3dh_utils.generate_signature_key_pair()
-        self.sk, self.SPK = x3dh_utils.generate_signature_key_pair()
+        self.key_bundles: dict[bytes, dict[str, VerifyingKey | bytes]] = {}  # List of key bundles (username, keys)
 
-        # Usually, there are multiple one-time keys and one-time public keys
-        ok, OPK = x3dh_utils.generate_signature_key_pair()
-        self.oks = [ok]
-        self.OPKs = [OPK]
-
-        self.sigma = ecdsa_sign(self.SPK.to_pem(), self.ik)
+    # CONNECTION METHODS
 
     def connect(self):
         try:
@@ -71,8 +65,14 @@ class Client:
 
                     if message.startswith(b"ALREADY_REGISTERED"):
                         print("Failed to register. Username already taken.")
-                        self.client_socket.close()
                         break
+
+                    if message.startswith(b"X3DH_KEY"):
+                        if not self.handle_key_receive(message):
+                            print("Failed to receive key.")
+                            break
+                        print("Received key bundle from server.")
+                        continue
 
                 else:
                     print("Connection closed by server.")
@@ -83,17 +83,33 @@ class Client:
         except Exception:
             traceback.print_exc()
             print("Error receiving message.")
+        finally:
+            print("Closing connection.")
+            self.client_socket.close()
 
     def send_messages(self):
         """Handles user input and sends messages to the server."""
         try:
+            print("You can now send messages to the server.")
+            print("Type 'exit' to close the connection.")
+            print("Type 'x3dh USER' to perform the X3DH key exchange.")
             while True:
-                msg = input("Enter a message: ")
+                msg = input()
                 if msg.lower() == "exit":
                     print("Closing connection.")
                     self.client_socket.close()
                     break
+
+                if msg.startswith("x3dh"):
+                    if len(msg.split()) != 2 or not msg.split()[1]:
+                        print("Invalid format. Use 'x3dh USER'.")
+                        continue
+                    print(f"Initiating X3DH key exchange by requesting key of {msg.split(" ")[1]}...")
+                    self.init_x3dh(msg.split()[1])
+                    continue
+
                 self.send(msg.encode("utf-8"))
+
         except Exception:
             traceback.print_exc()
             print("Error sending messages.")
@@ -114,14 +130,56 @@ class Client:
 
         self.send_messages()
 
+    # X3DH METHODS
+
+    def generate_keys(self):
+        self.ik, self.IPK = x3dh_utils.generate_signature_key_pair()
+        self.sk, self.SPK = x3dh_utils.generate_signature_key_pair()
+        # Usually, there are multiple one-time keys and one-time public keys
+        self.ok, self.OPK = x3dh_utils.generate_signature_key_pair()
+
+        self.sigma = ecdsa_sign(self.SPK.to_pem(), self.ik)
+
     def send_registration(self):
         ipk_hex = self.IPK.to_pem().hex()
         spk_hex = self.SPK.to_pem().hex()
-        opk_hex = self.OPKs[0].to_pem().hex()
         sigma_hex = self.sigma.hex()
+        opk_hex = self.OPK.to_pem().hex()
 
-        message = f"REGISTER   {self.username.encode().hex()}   {ipk_hex}   {spk_hex}   {sigma_hex}   {opk_hex}"
+        message = f"REGISTER{SPLIT}{self.username.encode().hex()}{SPLIT}{ipk_hex}{SPLIT}{spk_hex}{SPLIT}{sigma_hex}{SPLIT}{opk_hex}"
         self.send(message.encode("utf-8"))
+
+    def init_x3dh(self, target: str):
+        target = target.encode()
+        self.send(f"X3DH_REQUEST{SPLIT}{self.username.encode().hex()}{SPLIT}{target.hex()}".encode("utf-8"))
+
+    def handle_key_receive(self, message: bytes) -> bool:
+        owner_hex, IPK_B_hex, SPK_B_hex, sigma_B_hex, OPK_B_hex = message.split(SPLIT)[1:]
+        owner = bytes.fromhex(owner_hex.decode())
+        IPK_B = VerifyingKey.from_pem(bytes.fromhex(IPK_B_hex.decode()).decode())
+        SPK_B = VerifyingKey.from_pem(bytes.fromhex(SPK_B_hex.decode()).decode())
+        sigma_B = bytes.fromhex(sigma_B_hex.decode())
+        OPK_B = VerifyingKey.from_pem(bytes.fromhex(OPK_B_hex.decode()).decode())
+
+        print(f"Received X3DH key bundle from {owner.decode()}:")
+        print(f"IPK_B: {IPK_B.to_pem().decode()}")
+        print(f"SPK_B: {SPK_B.to_pem().decode()}")
+        print(f"sigma_B: {sigma_B.hex()}")
+        print(f"OPK_B: {OPK_B.to_pem().decode()}")
+
+        print("Checking signature...")
+        if not ecdsa_verify(sigma_B, SPK_B.to_pem(), IPK_B):
+            print("Signature verification failed.")
+            return False
+        print("Signature verified.")
+
+        self.key_bundles[owner] = {
+            "IPK": IPK_B,
+            "SPK": SPK_B,
+            "sigma": sigma_B,
+            "OPK": OPK_B
+        }
+        return True
 
 
 if __name__ == "__main__":

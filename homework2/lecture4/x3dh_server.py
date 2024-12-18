@@ -6,6 +6,8 @@ from typing import Optional
 
 from ecdsa import VerifyingKey
 
+from homework2.lecture4.x3dh_utils import SPLIT
+
 
 class Server:
     def __init__(self, host: str = "localhost", port: int = 25566):
@@ -81,23 +83,44 @@ class Server:
                 message = client_socket.recv(1024)
                 if message:
                     if message.startswith(b"REGISTER"):
-                        username_hex_bytes, ipk_hex_bytes, spk_hex_bytes, sigma_hex_bytes, opk_hex_bytes = message.split(b"   ")[1:]
+                        username_hex_bytes, ipk_hex_bytes, spk_hex_bytes, sigma_hex_bytes, opk_hex_bytes = message.split(SPLIT)[1:]
+                        print(username_hex_bytes.decode())
                         username = bytes.fromhex(username_hex_bytes.decode())
                         if username in self.registered_clients:
                             client_socket.send(b"ALREADY_REGISTERED")
                             client_socket.close()
-                            print(f"Client {addr} tried to register as {username.decode()} but it is already registered.")
+                            print(
+                                f"Client {addr} tried to register as {username.decode()} but it is already registered.")
                             break
                         self.registered_clients[username] = (addr[0], int(addr[1]))
+
+                        print(ipk_hex_bytes.decode())
+                        print(spk_hex_bytes.decode())
+                        print(opk_hex_bytes.decode())
 
                         self.key_bundles[username] = {
                             "IPK": VerifyingKey.from_pem(bytes.fromhex(ipk_hex_bytes.decode()).decode()),
                             "SPK": VerifyingKey.from_pem(bytes.fromhex(spk_hex_bytes.decode()).decode()),
                             "sigma": bytes.fromhex(sigma_hex_bytes.decode()),
-                            "OPK": VerifyingKey.from_pem(bytes.fromhex(spk_hex_bytes.decode()).decode())
+                            "OPK": VerifyingKey.from_pem(bytes.fromhex(opk_hex_bytes.decode()).decode())
                         }
 
                         client_socket.send(b"REGISTERED")
+                        continue
+
+                    if message.startswith(b"X3DH_REQUEST"):
+                        username_hex_bytes = message.split(SPLIT)[1]
+                        username = bytes.fromhex(username_hex_bytes.decode())
+                        if username not in self.registered_clients:
+                            client_socket.send(b"NOT_REGISTERED")
+                            print(
+                                f"Client {addr} tried to request keys for {username.decode()} but this user isn't registered.")
+                            break
+
+                        key_bundle = self.key_bundles[username]
+                        answer = f"X3DH_KEY{SPLIT}{username.hex()}{SPLIT}{key_bundle["IPK"].to_pem().hex()}{SPLIT}{key_bundle["SPK"].to_pem().hex()}{SPLIT}{key_bundle["sigma"].hex()}{SPLIT}{key_bundle["OPK"].to_pem().hex()}"
+                        client_socket.send(answer.encode())
+                        continue
 
                 else:
                     print(f"Client {addr} disconnected.")

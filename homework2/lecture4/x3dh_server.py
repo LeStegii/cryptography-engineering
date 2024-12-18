@@ -120,6 +120,16 @@ class Server:
                         print(f"Client {addr} requested keys for {username}.")
                         continue
 
+                    if message["type"] == "X3DH_REACTION":
+                        username = message["target"]
+                        if username not in self.registered_clients or username not in self.key_bundles:
+                            print(f"Client {addr} tried to react to keys for {username} but this user isn't registered.")
+                            continue
+
+                        self.send(x3dh_utils.encode_message(message), self.registered_clients[username])
+
+                        continue
+
                 else:
                     print(f"Client {addr} disconnected.")
                     break

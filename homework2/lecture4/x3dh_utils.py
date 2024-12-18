@@ -1,8 +1,11 @@
 import json
+import os
 from typing import Tuple
 
+from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
-from ecdsa import NIST256p as CURVE
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from ecdsa import NIST256p as CURVE, ECDH
 from ecdsa import SigningKey, VerifyingKey
 
 
@@ -57,3 +60,43 @@ def decode_message(encoded: bytes) -> dict[str, str | SigningKey | VerifyingKey 
 
     return decoded_message
 
+
+def power(power: SigningKey, base: VerifyingKey):
+    ecdh = ECDH(CURVE)
+    ecdh.load_private_key(power)
+    ecdh.load_received_public_key(base)
+    return ecdh.generate_sharedsecret_bytes()
+
+
+def aes_gcm_encrypt(key, plaintext, associated_data):
+    iv = os.urandom(12)  # GCM mode standard IV size is 96 bits (12 bytes)
+    encryptor = Cipher(
+        algorithms.AES(key),
+        modes.GCM(iv),
+        backend=default_backend()
+    ).encryptor()
+
+    # Add associated data (not encrypted but authenticated)
+    encryptor.authenticate_additional_data(associated_data)
+
+    # Encrypt the plaintext
+    ciphertext = encryptor.update(plaintext) + encryptor.finalize()
+
+    return iv, ciphertext, encryptor.tag
+
+
+# AES-GCM decryption
+def aes_gcm_decrypt(key, iv, ciphertext, associated_data, tag):
+    decryptor = Cipher(
+        algorithms.AES(key),
+        modes.GCM(iv, tag),
+        backend=default_backend()
+    ).decryptor()
+
+    # Add associated data (must match what was provided during encryption)
+    decryptor.authenticate_additional_data(associated_data)
+
+    # Decrypt the ciphertext
+    plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+
+    return plaintext

@@ -3,9 +3,12 @@ import ssl
 import threading
 import traceback
 from typing import Optional
+from warnings import catch_warnings
 
-from ecdsa import SigningKey, VerifyingKey
+from ecdsa import SigningKey, VerifyingKey, ECDH
+from ecdsa import NIST256p as CURVE
 
+from homework2.lecture3.tls.HKDF import hkdf_extract
 from homework2.lecture4 import x3dh_utils
 from utils import ecdsa_sign, ecdsa_verify
 
@@ -26,7 +29,8 @@ class Client:
         self.OPK: Optional[VerifyingKey] = None
         self.sigma: Optional[bytes] = None
 
-        self.key_bundles: dict[bytes, dict[str, VerifyingKey | bytes]] = {}  # List of key bundles (username, keys)
+        self.key_bundles: dict[str, dict[str, VerifyingKey | bytes]] = {}  # List of key bundles (username, keys)
+        self.x3dh_keys: dict[str, bytes] = {}  # List of shared secrets (username, key)
 
     # CONNECTION METHODS
 
@@ -72,8 +76,11 @@ class Client:
                     if message["type"] == "X3DH_KEY":
                         if message["status"] != "SUCCESS" or not self.handle_key_receive(message):
                             print("Failed to receive key.")
-                            continue
-                        print("Received key bundle from server.")
+                        continue
+
+                    if message["type"] == "X3DH_REACTION":
+                        print(f"Received X3DH reaction from {message["sender"]}.")
+                        self.reaction_x3dh(message)
                         continue
 
                 else:
@@ -157,7 +164,21 @@ class Client:
             "target": target
         }))
 
-    def handle_key_receive(self, message: dict[str, bytes | dict[str, VerifyingKey | bytes]]) -> bool:
+    def x3dh_key(self, ik: SigningKey, ek: SigningKey, IPK_B: VerifyingKey, SPK_B: VerifyingKey, OPK_B: VerifyingKey):
+        DH1 = x3dh_utils.power(ik, SPK_B)
+        DH2 = x3dh_utils.power(ek, IPK_B)
+        DH3 = x3dh_utils.power(ek, SPK_B)
+        DH4 = x3dh_utils.power(ek, OPK_B)
+        return hkdf_extract(salt=None, input_key_material=DH1 + DH2 + DH3 + DH4)
+
+    def x3dh_key_reaction(self, IPK_A: VerifyingKey, EPK_A: VerifyingKey, ik: SigningKey, sk: SigningKey, ok: SigningKey):
+        DH1 = x3dh_utils.power(sk, IPK_A)
+        DH2 = x3dh_utils.power(ik, EPK_A)
+        DH3 = x3dh_utils.power(sk, EPK_A)
+        DH4 = x3dh_utils.power(ok, EPK_A)
+        return hkdf_extract(salt=None, input_key_material=DH1 + DH2 + DH3 + DH4)
+
+    def handle_key_receive(self, message: dict[str, str | dict[str, VerifyingKey | bytes]]) -> bool:
 
         owner = message["owner"]
         key_bundle = message["key_bundle"]
@@ -165,6 +186,7 @@ class Client:
         IPK_B = key_bundle["IPK"]
         SPK_B = key_bundle["SPK"]
         sigma_B = key_bundle["sigma"]
+        OPK_B = key_bundle["OPK"]
 
         print(f"Received X3DH key bundle from {owner}:")
 
@@ -175,7 +197,57 @@ class Client:
         print("Signature verified.")
 
         self.key_bundles[owner] = key_bundle
+
+        print("Generating shared secret...")
+
+        ek, EPK = x3dh_utils.generate_signature_key_pair()
+        SK = self.x3dh_key(self.ik, ek, IPK_B, SPK_B, OPK_B)
+
+        print("Shared secret generated: ", SK)
+
+        self.x3dh_keys[owner] = SK
+
+        iv, cipher, tag = x3dh_utils.aes_gcm_encrypt(SK, b"some message", self.IPK.to_pem() + IPK_B.to_pem())
+
+        self.send(x3dh_utils.encode_message({
+            "type": "X3DH_REACTION",
+            "target": owner,
+            "sender": self.username,
+            "IPK": self.IPK,
+            "EPK": EPK,
+            "OPK": self.OPK,
+            "aead": {
+                "iv": iv,
+                "cipher": cipher,
+                "tag": tag
+            }
+        }))
+
         return True
+
+    def reaction_x3dh(self, message):
+        IPK_A = message["IPK"]
+        EPK_A = message["EPK"]
+        OPK_A = message["OPK"]
+
+        iv = message["aead"]["iv"]
+        cipher = message["aead"]["cipher"]
+        tag = message["aead"]["tag"]
+
+        SK = self.x3dh_key_reaction(IPK_A, EPK_A, self.ik, self.sk, self.ok)
+
+        print("Shared secret generated: ", SK)
+
+        try:
+            plaintext = x3dh_utils.aes_gcm_decrypt(SK, iv, cipher, IPK_A.to_pem() + self.IPK.to_pem(), tag)
+        except Exception:
+            print("Failed to decrypt the message.")
+            return
+
+        if plaintext == b"some message":
+            print(f"Successfully completed x3dh protocol with {message["sender"]}.")
+        else:
+            print("Failed to complete x3dh protocol.")
 
 
 if __name__ == "__main__":

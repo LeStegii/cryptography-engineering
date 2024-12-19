@@ -81,3 +81,47 @@ TODO
 This has been implemented in [`homework2/lecture3/tls`](homework2/lecture3/tls).
 
 - Bonus: Implement the same protocol, but this time use SHA3-512 as the hash function (for HKDF, HMAC, and the key schedule) and P-521 as the elliptic curve for key exchange. This should allow you to derive a key with 512 bits (64 bytes).
+
+### Lecture 4
+
+#### Tasks
+
+1. Implement a KDF chain based on HKDF.
+- You can learn how to use HKDF in the example code “HKDF.py” of Lecture 3.
+- To split a KDF output into Encryption Key and Chain Key, you can first specify the “length” parameter of hkdf_expand, and then truncate it into two byte-strings.
+
+TODO
+
+#### Homework
+
+- Try implementing X3DH using sockets.
+1. Suppose that Alice and Bob have registered with the server. Namely, the server has stored prekey
+     bundles of Alice and Bob.
+2. Alice wants to communicate with Bob, it first fetches prekey bundle of Bob from the server.
+3. Upon receiving the prekey bundle of Bob, Alice verifies the bundle. If it is valid, then Alice follows the X3DH protocol and compute a shared key. After computing a shared key, it sends the protocol message (see the X3DH protocol in this lecture note) to the server.
+4. The server forwards the message from Alice to Bob.
+5. Upon receiving the message from Alice, Bob also compute the X3DH session key.
+
+This has been implemented in [`homework2/lecture4/`](homework2/lecture4/). 
+
+- Bonus: Upgrade your implementation of X3DH so that it allows the recipient user to be offline.
+
+TODO
+
+### Lecture 7
+
+#### Tasks
+
+- Perform offline dictionary attacks. Suppose I leaked a SHA3-256 hash of my password (i.e., hash_pw = SHA3-256([my password]) ) and the password is in a dictionary (in the example code). The hexadecimal value (lower case) of the hash_pw is: e8acff88511d7f8e48f038001c24d7b1ab76d9233d7894fa936c4c7c93d2c917
+- Try to recover my password.
+
+#### Homework
+
+- Design a password-based login protocol and try analyzing it.
+  - You should specify (1) How the server stores passwords (2) The message flow of the protocol (3) How the server verifies.
+  - Analyze the security of your protocol (e.g., can it resist offline dictionary attacks?)
+  - Hint: You may add some nonces in your protocol
+- Implement your login system using sockets.
+  - The “password database” of the server couble be a text file where each row is ([User_name], [Password/Hash_of_password/salted_hash_of_password])
+
+This has been implemented in [`homework2/lecture7/auth`](homework2/lecture7/auth). More information can be found in the [README](homework2/lecture7/auth/README.md).

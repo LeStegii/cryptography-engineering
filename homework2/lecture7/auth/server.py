@@ -99,7 +99,7 @@ def start_ssl_server(host="localhost", port=12345, certfile="server.pem", keyfil
 
                     if currently_blocked[username] >= 3:
                         print(f"User {username} is now blocked.")
-                        Timer(10, unblock_user, args=(username,)).start()
+                        Timer(180, unblock_user, args=(username,)).start()
 
 def unblock_user(username):
     if username in currently_blocked:

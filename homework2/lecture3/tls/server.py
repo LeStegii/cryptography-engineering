@@ -29,9 +29,11 @@ def receive() -> bytes:
     return rec
 
 
+# Certificate authority private and public key
 sk_ca = SigningKey.generate(CURVE)
 pk_ca = sk_ca.get_verifying_key()
 
+# Server private and public key for signing
 sk_s = SigningKey.generate(CURVE)
 pk_s = sk_s.get_verifying_key()
 
@@ -43,12 +45,12 @@ def main():
     sock.bind((host, port))
 
     print("Generating private and public key...")
-    y, Y = utils.generate_ecdh_key_pair(ec.SECP256R1())
+    y, Y = utils.generate_ecdh_key_pair(ec.SECP256R1()) # Server's private and public key for everything but signing
     sigma_ca = utils.ecdsa_sign(utils.to_bytes(Y), sk_ca)
-    cert_pk_s = utils.to_bytes(Y) + b"|||" + sigma_ca + b"|||" + pk_ca.to_der()
+    cert_pk_s = utils.to_bytes(Y) + b"|||" + sigma_ca
 
-    print("Sending certificate to the client...")
-    send(cert_pk_s)
+    print("Sending PK_ca to the client...")
+    send(pk_ca.to_der())
 
     print("Waiting for the client's nonce and public key...")
     nonce_c = receive()
@@ -60,6 +62,7 @@ def main():
     print("Sending nonce and public key to the client...")
     send(nonce_s)
     send(utils.to_bytes(Y))
+    send(pk_s.to_der())
 
     print("Generating keys (1)...")
     X_y = y.exchange(ec.ECDH(), X)

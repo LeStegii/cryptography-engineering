@@ -3,10 +3,8 @@ import ssl
 import threading
 import traceback
 from typing import Optional
-from warnings import catch_warnings
 
-from ecdsa import SigningKey, VerifyingKey, ECDH
-from ecdsa import NIST256p as CURVE
+from ecdsa import SigningKey, VerifyingKey
 
 from homework2.lecture3.tls.HKDF import hkdf_extract
 from homework2.lecture4 import x3dh_utils

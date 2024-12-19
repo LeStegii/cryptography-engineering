@@ -67,8 +67,8 @@ def key_schedule_1(g_xy):
 
 def key_schedule_2(nonce_c: bytes, X: bytes, nonce_s: bytes, Y: bytes, g_xy: bytes):
     HS = derive_hs(g_xy)
-    ClientKC = hkdf_expand(HS, sha256(nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + b"ClientKC"))
-    ServerKC = hkdf_expand(HS, sha256(nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + b"ServerKC"))
+    ClientKC = sha256(nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + b"ClientKC")
+    ServerKC = sha256(nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + b"ServerKC")
     K2C = hkdf_expand(HS, ClientKC)
     K2S = hkdf_expand(HS, ServerKC)
     return K2C, K2S

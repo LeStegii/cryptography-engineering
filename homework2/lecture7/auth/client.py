@@ -22,6 +22,7 @@ def start_ssl_client(host="localhost", port=12345, cafile="server.pem"):
                 message = input("Enter message: ")
 
                 if message == "exit":
+                    send_message(ssock, message.encode())
                     print("Exiting...")
                     break
 

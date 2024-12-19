@@ -99,11 +99,12 @@ def start_ssl_server(host="localhost", port=12345, certfile="server.pem", keyfil
 
                     if currently_blocked[username] >= 3:
                         print(f"User {username} is now blocked.")
-                        Timer(180, unblock_user, args=(username,)).start()
+                        Timer(10, unblock_user, args=(username,)).start()
 
 def unblock_user(username):
-    print(f"Unblocking user {username}.")
-    currently_blocked.pop(username)
+    if username in currently_blocked:
+        currently_blocked.pop(username)
+        print(f"Unblocking user {username}.")
 
 def send_message(conn, message: bytes) -> None:
     conn.sendall(message)

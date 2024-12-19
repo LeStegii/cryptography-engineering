@@ -18,11 +18,11 @@ If the specified user doesn't exist yet, the server will send `UserNotFound`.
 
 # How does it work?
 
-The whole communication is encrypted using SSL, meaning that the data is encrypted before being sent over the network.
+The whole communication is encrypted using TLS, meaning that the data is encrypted before being sent over the network.
 This prevents attackers from reading the data being sent over the network.
 
 The server stores the name of an account together with the salted hash of the password and the corresponding salt.
-To prevent attackers from doing an offline dictionary attack in case of a database leak, the server encrypts the data with a secret key using AES.
+To prevent attackers from doing an offline dictionary attack in case of a database leak, the server encrypts the data with a secret key.
 This secret key is stored in the server side in a different database and is never sent over the network.
 
 When a user tries to login by sending the username, the server will reply with the salt and prompt the client for the password.

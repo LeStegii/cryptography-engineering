@@ -125,3 +125,7 @@ TODO
   - The “password database” of the server couble be a text file where each row is ([User_name], [Password/Hash_of_password/salted_hash_of_password])
 
 This has been implemented in [`homework2/lecture7/auth`](homework2/lecture7/auth). More information can be found in the [README](homework2/lecture7/auth/README.md).
+
+- Bonus: Upgrade your implementation of X3DH so that it allows the recipient user to be offline.
+
+TODO

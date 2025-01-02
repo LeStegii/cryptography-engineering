@@ -1,4 +1,5 @@
 # Generate ECDH private and public key pair
+import json
 import os
 # Use SHA256 as the hash function used in DSA
 from hashlib import sha256 as HASH_FUNC
@@ -7,7 +8,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from ecdsa import util  # pip install ecdsa
+from ecdsa import util, VerifyingKey, SigningKey  # pip install ecdsa
 
 
 # Use the curve P256, also known as SECP256R1, see https://neuromancer.sk/std/nist/P-256
@@ -89,3 +90,50 @@ def ecdsa_verify(signature, message, public_key):
         return is_valid
     except:
         return False
+
+def encode_message(message: dict[str, str | SigningKey | VerifyingKey | bytes | dict | int | None]) -> bytes:
+    dictionary = {}
+    for key, value in message.items():
+        if value is None:
+            dictionary[key + "||NONE"] = "NONE".encode().hex()
+        if isinstance(value, str):
+            dictionary[key + "||STR"] = value.encode().hex()
+        elif isinstance(value, SigningKey):
+            dictionary[key + "||SK"] = value.to_pem().hex()
+        elif isinstance(value, VerifyingKey):
+            dictionary[key + "||VK"] = value.to_pem().hex()
+        elif isinstance(value, bytes):
+            dictionary[key + "||BYTE"] = value.hex()
+        elif isinstance(value, int):
+            dictionary[key + "||INT"] = value.to_bytes(32, byteorder="big").hex()
+        elif isinstance(value, dict):
+            dictionary[key + "||DICT"] = encode_message(value).hex()
+        else:
+            raise ValueError(f"Unsupported type: {type(value)}")
+
+    return json.dumps(dictionary).encode()
+
+
+def decode_message(encoded: bytes) -> dict[str, str | SigningKey | VerifyingKey | bytes | dict | int]:
+    decoded = json.loads(encoded.decode())
+    decoded_message = {}
+    for key, value in decoded.items():
+        key, type_ = key.split("||")
+        if type_ == "NONE":
+            decoded_message[key] = None
+        if type_ == "STR":
+            decoded_message[key] = bytes.fromhex(value).decode()
+        elif type_ == "SK":
+            decoded_message[key] = SigningKey.from_pem(bytes.fromhex(value).decode())
+        elif type_ == "VK":
+            decoded_message[key] = VerifyingKey.from_pem(bytes.fromhex(value).decode())
+        elif type_ == "BYTE":
+            decoded_message[key] = bytes.fromhex(value)
+        elif type_ == "INT":
+            decoded_message[key] = int.from_bytes(bytes.fromhex(value), byteorder="big")
+        elif type_ == "DICT":
+            decoded_message[key] = decode_message(bytes.fromhex(value))
+        else:
+            raise ValueError(f"Unsupported type: {type_}")
+
+    return decoded_message

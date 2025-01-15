@@ -7,6 +7,8 @@ from hashlib import sha256 as HASH_FUNC
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey, EllipticCurvePublicKey
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from ecdsa import util, VerifyingKey, SigningKey  # pip install ecdsa
 
@@ -91,6 +93,7 @@ def ecdsa_verify(signature, message, public_key):
     except:
         return False
 
+
 def encode_message(message: dict[str, str | SigningKey | VerifyingKey | bytes | dict | int | None]) -> bytes:
     dictionary = {}
     for key, value in message.items():
@@ -102,6 +105,17 @@ def encode_message(message: dict[str, str | SigningKey | VerifyingKey | bytes | 
             dictionary[key + "||SK"] = value.to_pem().hex()
         elif isinstance(value, VerifyingKey):
             dictionary[key + "||VK"] = value.to_pem().hex()
+        elif isinstance(value, EllipticCurvePrivateKey):
+            dictionary[key + "||ECSK"] = value.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            ).hex()
+        elif isinstance(value, EllipticCurvePublicKey):
+            dictionary[key + "||ECPK"] = value.public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            ).hex()
         elif isinstance(value, bytes):
             dictionary[key + "||BYTE"] = value.hex()
         elif isinstance(value, int):
@@ -114,7 +128,8 @@ def encode_message(message: dict[str, str | SigningKey | VerifyingKey | bytes | 
     return json.dumps(dictionary).encode()
 
 
-def decode_message(encoded: bytes) -> dict[str, str | SigningKey | VerifyingKey | bytes | dict | int]:
+def decode_message(encoded: bytes) -> dict[
+    str, str | SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | bytes | dict | int]:
     decoded = json.loads(encoded.decode())
     decoded_message = {}
     for key, value in decoded.items():
@@ -133,7 +148,44 @@ def decode_message(encoded: bytes) -> dict[str, str | SigningKey | VerifyingKey 
             decoded_message[key] = int.from_bytes(bytes.fromhex(value), byteorder="big")
         elif type_ == "DICT":
             decoded_message[key] = decode_message(bytes.fromhex(value))
+        elif type_ == "ECSK":
+            decoded_message[key] = serialization.load_pem_private_key(
+                bytes.fromhex(value),
+                password=None,
+                backend=default_backend()
+            )
+        elif type_ == "ECPK":
+            decoded_message[key] = serialization.load_pem_public_key(
+                bytes.fromhex(value),
+                backend=default_backend()
+            )
         else:
             raise ValueError(f"Unsupported type: {type_}")
 
     return decoded_message
+
+
+def aes_gcm_encrypt(key, plaintext, associated_data):
+    iv = os.urandom(12)
+    encryptor = Cipher(
+        algorithms.AES(key),
+        modes.GCM(iv),
+        backend=default_backend()
+    ).encryptor()
+    encryptor.authenticate_additional_data(associated_data)
+
+    ciphertext = encryptor.update(plaintext) + encryptor.finalize()
+
+    return iv, ciphertext, encryptor.tag
+
+
+def aes_gcm_decrypt(key, iv, ciphertext, associated_data, tag):
+    decryptor = Cipher(
+        algorithms.AES(key),
+        modes.GCM(iv, tag),
+        backend=default_backend()
+    ).decryptor()
+    decryptor.authenticate_additional_data(associated_data)
+    plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+
+    return plaintext

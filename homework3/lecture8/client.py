@@ -7,11 +7,11 @@ import utils
 from homework3.lecture8.scram_utils import H, HMAC, sha256, xor_bytes
 
 username: Optional[str] = None
-password: Optional[str] = None
+pw: Optional[str] = None
 
 
 def start_ssl_client(host="localhost", port=12345, cafile="server.pem"):
-    global username, password
+    global username, pw
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.load_verify_locations(cafile=cafile)
 

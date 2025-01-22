@@ -1,4 +1,5 @@
 # Generate ECDH private and public key pair
+import hashlib
 import json
 import os
 # Use SHA256 as the hash function used in DSA
@@ -10,7 +11,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey, EllipticCurvePublicKey
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from ecdsa import util, VerifyingKey, SigningKey  # pip install ecdsa
+from ecdsa import util, VerifyingKey, SigningKey, ECDH  # pip install ecdsa
 
 
 # Use the curve P256, also known as SECP256R1, see https://neuromancer.sk/std/nist/P-256
@@ -94,7 +95,7 @@ def ecdsa_verify(signature, message, public_key):
         return False
 
 
-def encode_message(message: dict[str, str | SigningKey | VerifyingKey | bytes | dict | int | None]) -> bytes:
+def encode_message(message: dict[str, str | SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | bytes | dict | int | None]) -> bytes:
     dictionary = {}
     for key, value in message.items():
         if value is None:
@@ -129,7 +130,7 @@ def encode_message(message: dict[str, str | SigningKey | VerifyingKey | bytes | 
 
 
 def decode_message(encoded: bytes) -> dict[
-    str, str | SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | bytes | dict | int]:
+    str, str | SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | bytes | dict | int]:
     decoded = json.loads(encoded.decode())
     decoded_message = {}
     for key, value in decoded.items():
@@ -189,3 +190,12 @@ def aes_gcm_decrypt(key, iv, ciphertext, associated_data, tag):
     plaintext = decryptor.update(ciphertext) + decryptor.finalize()
 
     return plaintext
+
+def sha256(content: bytes) -> bytes:
+    return hashlib.sha256(content).digest()
+
+def power(exponent: SigningKey, base: VerifyingKey, curve = ec.SECP256R1()):
+    ecdh = ECDH(curve)
+    ecdh.load_private_key(exponent)
+    ecdh.load_received_public_key(base)
+    return ecdh.generate_sharedsecret_bytes()

@@ -3,9 +3,11 @@ import socket
 import ssl
 from typing import Optional
 
+from cryptography.hazmat.primitives._serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption
+
 import utils
 from homework3.lecture8.scram_utils import H
-from homework3.lecture9.l9_utils import H, random_element, h, power, inverse, KDF, AEAD_decode
+from homework3.lecture9.l9_utils import H, random_element, h, power, inverse, KDF, AEAD_decode, random_z_q
 
 username: Optional[str] = None
 pw: Optional[str] = None
@@ -31,12 +33,13 @@ def start_ssl_client(host="localhost", port=12345, cafile="server.pem"):
                 print("Registration complete.")
 
             print("Trying to login...")
+            pw = input("Enter your password: ")
 
             h_pw = h(pw.encode())
-            a = random_element()
+            a = random_z_q()
             h_pw_a = power(h_pw, a)
 
-            send_message(ssock, utils.encode_message({"h_pw_a": username}))
+            send_message(ssock, utils.encode_message({"h_pw_a": h_pw_a}))
 
             login_answer = utils.decode_message(receive_message(ssock))
 
@@ -48,11 +51,18 @@ def start_ssl_client(host="localhost", port=12345, cafile="server.pem"):
             a_inv = inverse(a)
             hp_pw_s = power(h_pw_a_s, a_inv)
 
-            rw = H(pw.encode() + hp_pw_s)
+            rw = H(pw.encode() + hp_pw_s.to_bytes())
             rw_key = KDF(rw)
             enc_client_key_info = AEAD_decode(rw_key, enc_client_keys, iv, tag)
             client_key_info = utils.decode_message(enc_client_key_info)
 
+            lpk_c = client_key_info["lpk_c"]
+            lsk_c = client_key_info["lsk_c"]
+            lpk_s = client_key_info["lpk_s"]
+
+        print("lpk_s: " + lpk_s.public_bytes(encoding=Encoding.PEM, format=PublicFormat.Raw).hex())
+        print("lpk_c: " + lpk_c.public_bytes(encoding=Encoding.PEM, format=PublicFormat.Raw).hex())
+        print("lsk_c: " + lsk_c.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.Raw, encryption_algorithm=NoEncryption()).hex())
 
 
 

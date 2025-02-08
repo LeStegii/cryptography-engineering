@@ -2,9 +2,13 @@ import socket
 import socket
 import ssl
 
+from cryptography.hazmat.primitives._serialization import Encoding, PublicFormat, PrivateFormat, \
+    NoEncryption
+from ecdsa.ellipticcurve import Point
+
 import utils
 from homework3.Database import Database
-from homework3.lecture9.l9_utils import H, random_element, power, h, KDF, AKE_KeyGen, AEAD_encode
+from homework3.lecture9.l9_utils import H, power, h, KDF, AKE_KeyGen, AEAD_encode, random_z_q
 
 key = None
 
@@ -35,8 +39,8 @@ def start_ssl_server(host="localhost", port=12345, certfile="server.pem", keyfil
                 conn.close()
                 return
 
-            s = random_element()
-            rw = H(pw.encode() + power(h(pw), s))
+            s = random_z_q()
+            rw = H(pw.encode() + power(h(pw.encode()), s).to_bytes())
             rw_key = KDF(rw)
             lpk_c, lsk_c = AKE_KeyGen()
             lpk_s, lsk_s = AKE_KeyGen()
@@ -53,11 +57,18 @@ def start_ssl_server(host="localhost", port=12345, certfile="server.pem", keyfil
                 "iv": iv,
                 "tag": tag
             })
+            print("lpk_s: " + lpk_s.public_bytes(encoding=Encoding.PEM, format=PublicFormat.Raw).hex())
+            print("lpk_c: " + lpk_c.public_bytes(encoding=Encoding.PEM, format=PublicFormat.Raw).hex())
+            print("lsk_s: " + lsk_s.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.Raw, encryption_algorithm=NoEncryption()).hex())
+            print("lsk_c: " + lsk_c.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.Raw, encryption_algorithm=NoEncryption()).hex())
+
             print(f"User {username} registered.")
+        else:
+            send_message(conn, utils.encode_message({"status": "REGISTERED"}))
 
         print("Waiting for login request...")
 
-        h_pw_a = utils.decode_message(receive_message(conn))["h_pw_a"]
+        h_pw_a: Point = utils.decode_message(receive_message(conn))["h_pw_a"]
 
         user_data = database.get(username)
 
@@ -69,6 +80,8 @@ def start_ssl_server(host="localhost", port=12345, certfile="server.pem", keyfil
             "iv": user_data["iv"],
             "tag": user_data["tag"]
         }))
+
+
 
 
 

@@ -12,6 +12,8 @@ from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from ecdsa import util, VerifyingKey, SigningKey, ECDH  # pip install ecdsa
+from ecdsa.curves import Curve, curves, NIST256p
+from ecdsa.ellipticcurve import Point
 
 
 # Use the curve P256, also known as SECP256R1, see https://neuromancer.sk/std/nist/P-256
@@ -95,7 +97,7 @@ def ecdsa_verify(signature, message, public_key):
         return False
 
 
-def encode_message(message: dict[str, str | SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | bytes | dict | int | None]) -> bytes:
+def encode_message(message: dict[str, str | SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | Point | bytes | dict | int | None]) -> bytes:
     dictionary = {}
     for key, value in message.items():
         if value is None:
@@ -117,6 +119,10 @@ def encode_message(message: dict[str, str | SigningKey | VerifyingKey | Elliptic
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             ).hex()
+        elif isinstance(value, Curve):
+            dictionary[key + "||CURVE"] = value.to_der().hex()
+        elif isinstance(value, Point):
+            dictionary[key + "||POINT"] = value.to_bytes().hex()
         elif isinstance(value, bytes):
             dictionary[key + "||BYTE"] = value.hex()
         elif isinstance(value, int):
@@ -130,7 +136,9 @@ def encode_message(message: dict[str, str | SigningKey | VerifyingKey | Elliptic
 
 
 def decode_message(encoded: bytes) -> dict[
-    str, str | SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | bytes | dict | int]:
+    str, str | SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | Point | bytes | dict | int]:
+
+
     decoded = json.loads(encoded.decode())
     decoded_message = {}
     for key, value in decoded.items():
@@ -160,6 +168,10 @@ def decode_message(encoded: bytes) -> dict[
                 bytes.fromhex(value),
                 backend=default_backend()
             )
+        elif type_ == "CURVE":
+            decoded_message[key] = Curve.from_der(bytes.fromhex(value))
+        elif type_ == "POINT":
+            decoded_message[key] = Point.from_bytes(NIST256p.curve, bytes.fromhex(value))
         else:
             raise ValueError(f"Unsupported type: {type_}")
 

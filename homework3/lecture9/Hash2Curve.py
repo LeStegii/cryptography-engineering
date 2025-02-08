@@ -1,7 +1,8 @@
-from ecdsa import ellipticcurve, curves  # pip install ecdsa
 from hashlib import sha256
-from ecdsa.numbertheory import square_root_mod_prime
 from os import urandom
+
+from ecdsa import ellipticcurve, curves  # pip install ecdsa
+from ecdsa.numbertheory import square_root_mod_prime
 
 # Information about P256
 P256 = curves.NIST256p

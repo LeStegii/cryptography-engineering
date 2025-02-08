@@ -1,8 +1,9 @@
 import socket
 
 from Cryptodome.Cipher import AES
-from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+
 import utils
 
 HOST = '127.0.0.1'

@@ -1,7 +1,7 @@
 import csv
 import os
-import ssl
 import socket
+import ssl
 from pathlib import Path
 from threading import Timer
 

@@ -1,14 +1,10 @@
 import socket
-import socket
 import ssl
 
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives._serialization import Encoding, PublicFormat, PrivateFormat, \
-    NoEncryption
 from ecdsa.ellipticcurve import Point
 
 import utils
-from homework2.lecture3.tls.HKDF import hkdf_extract, hkdf_expand
+from homework2.lecture3.tls.HKDF import hkdf_expand
 from homework3.Database import Database
 from homework3.lecture9.l9_utils import H, power, h, KDF, AKE_KeyGen, AEAD_encode, random_z_q, HMQV_KServer
 

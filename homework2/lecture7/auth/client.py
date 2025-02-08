@@ -1,6 +1,6 @@
-import ssl
-import socket
 import hashlib
+import socket
+import ssl
 
 
 def hash_password(password, salt):

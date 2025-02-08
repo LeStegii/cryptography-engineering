@@ -1,12 +1,12 @@
-from ecdsa import SigningKey, util # pip install ecdsa
-
-# Use the curve P256, also known as SECP256R1, see https://neuromancer.sk/std/nist/P-256
-from ecdsa import NIST256p as CURVE  
-
 # Use SHA256 as the hash function used in DSA
 from hashlib import sha256 as HASH_FUNC
 
-# Or one can try P521 + SHA512 
+# Use the curve P256, also known as SECP256R1, see https://neuromancer.sk/std/nist/P-256
+from ecdsa import NIST256p as CURVE
+from ecdsa import SigningKey, util  # pip install ecdsa
+
+
+# Or one can try P521 + SHA512
 # Note that the length of the HASH_FUNC must be shorter than the order of CURVE
 # from ecdsa import NIST521p as CURVE  #Use the curve P521
 # from hashlib import sha512 as HASH_FUNC

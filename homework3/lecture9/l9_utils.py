@@ -1,12 +1,6 @@
 import os
-from typing import Tuple
 
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric.ec import (
-    EllipticCurvePublicKey,
-    EllipticCurvePrivateKey, SECP256R1,
-)
-from ecdsa import SigningKey
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey, EllipticCurvePrivateKey
 from ecdsa.ellipticcurve import Point
 
 import utils

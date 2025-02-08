@@ -1,16 +1,13 @@
 import socket
-import socket
 import ssl
 from typing import Optional
 
 from cryptography.exceptions import InvalidTag
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives._serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption
 
 import utils
 from homework2.lecture3.tls.HKDF import hkdf_expand
 from homework3.lecture8.scram_utils import H
-from homework3.lecture9.l9_utils import H, random_element, h, power, inverse, KDF, AEAD_decode, random_z_q, AKE_KeyGen, \
+from homework3.lecture9.l9_utils import H, h, power, inverse, KDF, AEAD_decode, random_z_q, AKE_KeyGen, \
     HMQV_KClient
 
 username: Optional[str] = None

@@ -1,6 +1,6 @@
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives import hashes, hmac
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes, hmac
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 HASH_FUNC = hashes.SHA256() # Use SHA256
 KEY_LEN = 32 # 32 bytes

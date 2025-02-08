@@ -9,6 +9,7 @@ a = P256.curve.a()
 b = P256.curve.b()
 p = P256.curve.p()
 n = P256.order
+g = P256.generator
 q = n
 HASH = sha256
 

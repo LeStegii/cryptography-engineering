@@ -2,13 +2,15 @@ import socket
 import socket
 import ssl
 
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives._serialization import Encoding, PublicFormat, PrivateFormat, \
     NoEncryption
 from ecdsa.ellipticcurve import Point
 
 import utils
+from homework2.lecture3.tls.HKDF import hkdf_extract, hkdf_expand
 from homework3.Database import Database
-from homework3.lecture9.l9_utils import H, power, h, KDF, AKE_KeyGen, AEAD_encode, random_z_q
+from homework3.lecture9.l9_utils import H, power, h, KDF, AKE_KeyGen, AEAD_encode, random_z_q, HMQV_KServer
 
 key = None
 
@@ -57,13 +59,10 @@ def start_ssl_server(host="localhost", port=12345, certfile="server.pem", keyfil
                 "iv": iv,
                 "tag": tag
             })
-            print("lpk_s: " + lpk_s.public_bytes(encoding=Encoding.PEM, format=PublicFormat.Raw).hex())
-            print("lpk_c: " + lpk_c.public_bytes(encoding=Encoding.PEM, format=PublicFormat.Raw).hex())
-            print("lsk_s: " + lsk_s.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.Raw, encryption_algorithm=NoEncryption()).hex())
-            print("lsk_c: " + lsk_c.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.Raw, encryption_algorithm=NoEncryption()).hex())
 
             print(f"User {username} registered.")
         else:
+            print(f"User {username} found, sending registration confirmation.")
             send_message(conn, utils.encode_message({"status": "REGISTERED"}))
 
         print("Waiting for login request...")
@@ -81,8 +80,38 @@ def start_ssl_server(host="localhost", port=12345, certfile="server.pem", keyfil
             "tag": user_data["tag"]
         }))
 
+        server_k_bundle = user_data["server_key_bundle"]  # (lpk_c, lpk_s, lsk_s)
 
+        if utils.decode_message(receive_message(conn))["status"] == "TAG_INVALID":
+            print("Invalid tag, password of client was probably incorrect.")
+            return
 
+        # AKE
+        b = server_k_bundle["lsk_s"]
+        A = server_k_bundle["lpk_c"]
+        Y, y = AKE_KeyGen()
+
+        X = utils.decode_message(receive_message(conn))["X"]
+        send_message(conn, utils.encode_message({"Y": Y}))
+
+        SK = HMQV_KServer(b, y, Y, A, X, username, host)
+
+        print("Shared secret generated: " + SK.hex())
+
+        key = hkdf_expand(SK, b"key", 32 * 2)
+        K_C, K_S = key[:32], key[32:]
+
+        mac_c = utils.HMAC(K_C, b"Client KC")
+        mac_s_1 = utils.HMAC(K_S, b"Server KC")
+
+        send_message(conn, utils.encode_message({"mac_c": mac_c}))
+        mac_s = utils.decode_message(receive_message(conn))["mac_s"]
+
+        if mac_s != mac_s_1:
+            print("Couldn't validate mac_s from client.")
+            return
+
+        print("SK accepted!")
 
 
 def send_message(conn, message: bytes) -> None:

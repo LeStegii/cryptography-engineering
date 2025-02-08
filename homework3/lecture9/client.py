@@ -3,11 +3,15 @@ import socket
 import ssl
 from typing import Optional
 
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives._serialization import Encoding, PrivateFormat, PublicFormat, NoEncryption
 
 import utils
+from homework2.lecture3.tls.HKDF import hkdf_expand
 from homework3.lecture8.scram_utils import H
-from homework3.lecture9.l9_utils import H, random_element, h, power, inverse, KDF, AEAD_decode, random_z_q
+from homework3.lecture9.l9_utils import H, random_element, h, power, inverse, KDF, AEAD_decode, random_z_q, AKE_KeyGen, \
+    HMQV_KClient
 
 username: Optional[str] = None
 pw: Optional[str] = None
@@ -53,24 +57,46 @@ def start_ssl_client(host="localhost", port=12345, cafile="server.pem"):
 
             rw = H(pw.encode() + hp_pw_s.to_bytes())
             rw_key = KDF(rw)
-            enc_client_key_info = AEAD_decode(rw_key, enc_client_keys, iv, tag)
-            client_key_info = utils.decode_message(enc_client_key_info)
+            try:
+                enc_client_key_info = AEAD_decode(rw_key, enc_client_keys, iv, tag)
+                send_message(ssock, utils.encode_message({"status": "TAG_VALID"}))
+            except InvalidTag:
+                print("Invalid tag, entered password is probably incorrect.")
+                send_message(ssock, utils.encode_message({"status": "TAG_INVALID"}))
+                return
+            client_key_info = utils.decode_message(enc_client_key_info)  # (lpk_c, lsk_c, lpk_s)
 
             lpk_c = client_key_info["lpk_c"]
             lsk_c = client_key_info["lsk_c"]
             lpk_s = client_key_info["lpk_s"]
 
-        print("lpk_s: " + lpk_s.public_bytes(encoding=Encoding.PEM, format=PublicFormat.Raw).hex())
-        print("lpk_c: " + lpk_c.public_bytes(encoding=Encoding.PEM, format=PublicFormat.Raw).hex())
-        print("lsk_c: " + lsk_c.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.Raw, encryption_algorithm=NoEncryption()).hex())
+            # AKE
 
+            a = lsk_c
+            B = lpk_s
+            X, x = AKE_KeyGen()
 
+            send_message(ssock, utils.encode_message({"X": X}))
+            Y = utils.decode_message(receive_message(ssock))["Y"]
 
+            SK = HMQV_KClient(a, x, X, B, Y, username, host)
 
+            print("Shared secret generated: " + SK.hex())
 
+            key = hkdf_expand(SK, b"key", 32 * 2)
+            K_C, K_S = key[:32], key[32:]
 
+            mac_c_1 = utils.HMAC(K_C, b"Client KC")
+            mac_s = utils.HMAC(K_S, b"Server KC")
 
+            mac_c = utils.decode_message(receive_message(ssock))["mac_c"]
+            send_message(ssock, utils.encode_message({"mac_s": mac_s}))
 
+            if mac_c != mac_c_1:
+                print("Couldn't validate mac_c from server.")
+                return
+
+            print("SK accepted!")
 
 
 def send_message(conn, message: bytes) -> None:
@@ -84,4 +110,5 @@ def receive_message(conn) -> bytes:
 if __name__ == "__main__":
     username = input("Enter your username: ")
 
+    print("Connecting to server...")
     start_ssl_client()

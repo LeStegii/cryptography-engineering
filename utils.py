@@ -1,5 +1,6 @@
 # Generate ECDH private and public key pair
 import hashlib
+import hmac
 import json
 import os
 # Use SHA256 as the hash function used in DSA
@@ -13,7 +14,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from ecdsa import util, VerifyingKey, SigningKey, ECDH  # pip install ecdsa
 from ecdsa.curves import Curve, curves, NIST256p
-from ecdsa.ellipticcurve import Point
+from ecdsa.ellipticcurve import Point, PointJacobi
 
 
 # Use the curve P256, also known as SECP256R1, see https://neuromancer.sk/std/nist/P-256
@@ -121,7 +122,7 @@ def encode_message(message: dict[str, str | SigningKey | VerifyingKey | Elliptic
             ).hex()
         elif isinstance(value, Curve):
             dictionary[key + "||CURVE"] = value.to_der().hex()
-        elif isinstance(value, Point):
+        elif isinstance(value, Point) or isinstance(value, PointJacobi):
             dictionary[key + "||POINT"] = value.to_bytes().hex()
         elif isinstance(value, bytes):
             dictionary[key + "||BYTE"] = value.hex()
@@ -211,3 +212,6 @@ def power(exponent: SigningKey, base: VerifyingKey, curve = ec.SECP256R1()):
     ecdh.load_private_key(exponent)
     ecdh.load_received_public_key(base)
     return ecdh.generate_sharedsecret_bytes()
+
+def HMAC(key: bytes, content: bytes) -> bytes:
+    return hmac.new(key, content, hashlib.sha256).digest()

@@ -2,12 +2,14 @@ import socket
 import ssl
 import threading
 import traceback
+from pathlib import Path
 from typing import Optional
 
 from ecdsa import SigningKey, VerifyingKey
 
 from homework2.lecture3.tls.HKDF import hkdf_extract
 from homework2.lecture4 import x3dh_utils
+from homework3.lecture8.client import username
 from utils import ecdsa_sign, ecdsa_verify
 
 
@@ -126,7 +128,7 @@ class Client:
         self.username = input("Enter your username: ")
 
         print("Generating keys...")
-        self.generate_keys()
+        self.load_or_generate_keys()
 
         print("Sending registration request...")
         self.send_registration()
@@ -138,11 +140,32 @@ class Client:
 
     # X3DH METHODS
 
-    def generate_keys(self):
-        self.ik, self.IPK = x3dh_utils.generate_signature_key_pair()
-        self.sk, self.SPK = x3dh_utils.generate_signature_key_pair()
-        # Usually, there are multiple one-time keys and one-time public keys
-        self.ok, self.OPK = x3dh_utils.generate_signature_key_pair()
+    def load_or_generate_keys(self):
+        # Check if username.txt exists
+        # If it does, load the keys from there
+        # If it doesn't, generate the keys and save them to username.txt
+
+        if Path(f"{self.username}.txt").exists():
+            with open(f"{self.username}.txt", "r") as f:
+                self.ik = SigningKey.from_pem(bytes.fromhex(f.readline()).decode())
+                self.IPK = VerifyingKey.from_pem(bytes.fromhex(f.readline()).decode())
+                self.sk = SigningKey.from_pem(bytes.fromhex(f.readline()).decode())
+                self.SPK = VerifyingKey.from_pem(bytes.fromhex(f.readline()).decode())
+                self.ok = SigningKey.from_pem(bytes.fromhex(f.readline()).decode())
+                self.OPK = VerifyingKey.from_pem(bytes.fromhex(f.readline()).decode())
+        else:
+            self.ik, self.IPK = x3dh_utils.generate_signature_key_pair()
+            self.sk, self.SPK = x3dh_utils.generate_signature_key_pair()
+            # Usually, there are multiple one-time keys and one-time public keys
+            self.ok, self.OPK = x3dh_utils.generate_signature_key_pair()
+
+            with open(f"{self.username}.txt", "w") as f:
+                f.write(self.ik.to_pem().hex() + "\n")
+                f.write(self.IPK.to_pem().hex() + "\n")
+                f.write(self.sk.to_pem().hex() + "\n")
+                f.write(self.SPK.to_pem().hex() + "\n")
+                f.write(self.ok.to_pem().hex() + "\n")
+                f.write(self.OPK.to_pem().hex() + "\n")
 
         self.sigma = ecdsa_sign(self.SPK.to_pem(), self.ik)
 

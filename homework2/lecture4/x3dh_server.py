@@ -17,6 +17,7 @@ class Server:
         self.connections: dict[tuple[str, int], ssl.SSLSocket] = {}  # List of connected clients (addr, socket)
         self.registered_clients: dict[str, tuple[str, int]] = {}  # List of registered clients (username, addr)
         self.key_bundles: dict[str, dict[str, VerifyingKey | bytes]] = {}  # List of key bundles (username, keys)
+        self.offline_messages: dict[str, list[dict]] = {}  # List of offline messages (username, messages)
 
     def start(self):
         try:
@@ -100,13 +101,19 @@ class Server:
                             "OPK": message["OPK"]
                         }
 
+                        if username in self.offline_messages.keys():
+                            for message in self.offline_messages[username]:
+                                print(f"Sending offline message to {username}.")
+                                client_socket.send(x3dh_utils.encode_message(message))
+                            self.offline_messages.pop(username)
+
                         client_socket.send(x3dh_utils.encode_message({"type": "REGISTERED"}))
                         print(f"Client {addr} registered as {username}.")
                         continue
 
                     if message["type"] == "X3DH_REQUEST":
                         username = message["target"]
-                        if username not in self.registered_clients or username not in self.key_bundles:
+                        if username not in self.key_bundles:
                             client_socket.send(x3dh_utils.encode_message({"type": "X3DH_KEY", "status": "FAILED"}))
                             print(f"Client {addr} tried to request keys for {username} but this user isn't registered.")
                             continue
@@ -122,8 +129,15 @@ class Server:
 
                     if message["type"] == "X3DH_REACTION":
                         username = message["target"]
-                        if username not in self.registered_clients or username not in self.key_bundles:
+                        if username not in self.key_bundles:
                             print(f"Client {addr} tried to react to keys for {username} but this user isn't registered.")
+                            continue
+
+                        if username not in self.registered_clients:
+                            print(f"Client {addr} tried to react to keys for {username} but this user isn't connected. Adding to queue.")
+                            if username not in self.offline_messages:
+                                self.offline_messages[username] = []
+                            self.offline_messages[username].append(message)
                             continue
 
                         self.send(x3dh_utils.encode_message(message), self.registered_clients[username])
@@ -144,7 +158,6 @@ class Server:
             for username, client_addr in self.registered_clients.items():
                 if client_addr == addr:
                     self.registered_clients.pop(username)
-                    self.key_bundles.pop(username)
                     break
 
             print(f"Connection with {addr} closed.")

@@ -3,11 +3,11 @@ import socket
 import sys
 
 from cryptography.hazmat.primitives.asymmetric import ec
-from ecdsa import NIST256p as CURVE
+from ecdsa import NIST521p as CURVE
 from ecdsa import SigningKey
 
 import utils
-from homework2.lecture3.tls.tls_utils import aes_gcm_encrypt, key_schedule_1, sigma_sign, key_schedule_2, hmac_mac, \
+from homework2.lecture3.tls.bonus.tls_utils import aes_gcm_encrypt, key_schedule_1, sigma_sign, key_schedule_2, hmac_mac, \
     key_schedule_3, aes_gcm_decrypt, hmac_verify
 
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 54321
@@ -45,7 +45,7 @@ def main():
     sock.bind((host, port))
 
     print("Generating private and public key...")
-    y, Y = utils.generate_ecdh_key_pair(ec.SECP256R1()) # Server's private and public key for everything but signing
+    y, Y = utils.generate_ecdh_key_pair(ec.SECP521R1()) # Server's private and public key for everything but signing
     sigma_ca = utils.ecdsa_sign(utils.to_bytes(Y), sk_ca)
     cert_pk_s = utils.to_bytes(Y) + b"|||" + sigma_ca
 

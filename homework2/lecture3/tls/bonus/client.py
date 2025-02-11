@@ -4,7 +4,7 @@ import sys
 from cryptography.hazmat.primitives.asymmetric import ec
 from ecdsa import VerifyingKey
 
-from homework2.lecture3.tls.tls_utils import *
+from homework2.lecture3.tls.bonus.tls_utils import *
 from utils import ecdsa_verify
 
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 12345
@@ -32,7 +32,7 @@ def main():
     sock.bind((host, port))
 
     print("Generating private and public key...")
-    x, X = utils.generate_ecdh_key_pair(ec.SECP256R1())
+    x, X = utils.generate_ecdh_key_pair(ec.SECP521R1())
 
     print("Generating nonce (32 random bytes)...")
     nonce_c = os.urandom(32)
@@ -73,7 +73,7 @@ def main():
         print("Invalid certificate!")
         return
 
-    sha = sha256(nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + cert_pk_s)
+    sha = sha3_512(nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + cert_pk_s)
 
     if not ecdsa_verify(sigma_s, sha, pk_s):
         print("Invalid signature!")

@@ -145,8 +145,8 @@ class Client:
         # If it does, load the keys from there
         # If it doesn't, generate the keys and save them to username.txt
 
-        if Path(f"{self.username}.txt").exists():
-            with open(f"{self.username}.txt", "r") as f:
+        if Path(f"key-{self.username}.txt").exists():
+            with open(f"key-{self.username}.txt", "r") as f:
                 self.ik = SigningKey.from_pem(bytes.fromhex(f.readline()).decode())
                 self.IPK = VerifyingKey.from_pem(bytes.fromhex(f.readline()).decode())
                 self.sk = SigningKey.from_pem(bytes.fromhex(f.readline()).decode())
@@ -159,7 +159,7 @@ class Client:
             # Usually, there are multiple one-time keys and one-time public keys
             self.ok, self.OPK = x3dh_utils.generate_signature_key_pair()
 
-            with open(f"{self.username}.txt", "w") as f:
+            with open(f"key-{self.username}.txt", "w") as f:
                 f.write(self.ik.to_pem().hex() + "\n")
                 f.write(self.IPK.to_pem().hex() + "\n")
                 f.write(self.sk.to_pem().hex() + "\n")

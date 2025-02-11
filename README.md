@@ -106,7 +106,7 @@ This has been implemented in [`homework2/lecture4/`](homework2/lecture4/).
 
 - Bonus: Upgrade your implementation of X3DH so that it allows the recipient user to be offline.
 
-TODO
+This has been added to [`homework2/lecture4/`](homework2/lecture4/).
 
 ### Lecture 7
 
@@ -126,6 +126,26 @@ TODO
 
 This has been implemented in [`homework2/lecture7/auth`](homework2/lecture7/auth). More information can be found in the [README](homework2/lecture7/auth/README.md).
 
-- Bonus: Upgrade your implementation of X3DH so that it allows the recipient user to be offline.
+
+### Lecture 8
+
+- Implement the SCRAM protocol (You do not need to use sockets, but your program should draw the message flows).
+
+This has been implemented in [`homework3/lecture8`](homework3/lecture8/). More information can be found in the [README](homework3/lecture8/README.md).
+
+- Bonus: Try arguing that, even though SRP-v6a is run without using TLS encrypted channel, the adversary still cannot “easily” launch offline dictionary attacks on it. Just write a simple pdf to argue it. (Hint: Using specific example is better than providing abstract explanations)
 
 TODO
+
+### Lecture 9
+
+- Implement the DH-OPRF protocol, and use it to implement the OPAQUE registration phase.
+- Implement the HMQV AKE protocol
+- Implement the OPAQUE protocol instantiating with the HMQV protocol
+- (Bonus) Implement the OPAQUE protocol (in the non-bonus homework) using sockets
+
+This has all been done in one task in [`homework3/lecture9`](homework3/lecture9/). More information can be found in the [README](homework3/lecture9/README.md).
+
+(Bonus) What is the RTT of the OPAQUE protocol in the non-bonus homework? Can you improve it? If so, implement your improved version (can be without sockets)
+
+The solution can be found in the [README](homework3/lecture9/README.md).

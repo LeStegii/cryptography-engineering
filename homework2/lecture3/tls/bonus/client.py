@@ -58,10 +58,12 @@ def main():
     K2C, K2S = key_schedule_2(nonce_c, X, nonce_s, Y, Y_x)
 
     print("Decrypting message...")
-    iv = receive()
+    iv1 = receive()
+    iv2 = receive()
     cipher = receive()
-    tag = receive()
-    cert_pk_s, sigma_s, mac_s = aes_gcm_decrypt(K1S, iv, cipher, utils.to_bytes(Y), tag).split(b"$$$")
+    tag1 = receive()
+    tag2 = receive()
+    cert_pk_s, sigma_s, mac_s = aes_gcm_decrypt(K1S, iv1, iv2, cipher, utils.to_bytes(Y), tag1, tag2).split(b"$$$")
     _, sigma_ca = cert_pk_s.split(b"|||")
 
     print("Generating keys (3)...")
@@ -89,11 +91,13 @@ def main():
     mac_c = hmac_mac(K2C, nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + sigma_s + cert_pk_s + b"ClientMAC")
 
     print("Sending mac_c to the server using aes_gcm...")
-    iv_c, cipher_c, tag_c = aes_gcm_encrypt(K1C, mac_c, utils.to_bytes(Y))
+    iv1_c, iv2_c, ciphertext, tag1_c, tag2_c = aes_gcm_encrypt(K1C, mac_c, utils.to_bytes(Y))
 
-    send(iv_c)
-    send(cipher_c)
-    send(tag_c)
+    send(iv1_c)
+    send(iv2_c)
+    send(ciphertext)
+    send(tag1_c)
+    send(tag2_c)
 
     print("Connection established!")
     print("K3C:", K3C)

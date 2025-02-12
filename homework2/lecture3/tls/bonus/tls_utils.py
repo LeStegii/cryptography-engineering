@@ -1,7 +1,8 @@
 import os
 
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes, hmac
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import hmac
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.hashes import Hash, SHA3_512
 
@@ -10,38 +11,55 @@ from homework2.lecture3.tls.bonus.HKDF import hkdf_extract, hkdf_expand
 
 
 def aes_gcm_encrypt(key, plaintext, associated_data):
-    # modes._check_aes_key_length = lambda k, a: None # Disable key length check
-    iv = os.urandom(12)  # GCM mode standard IV size is 96 bits (12 bytes)
-    encryptor = Cipher(
-        algorithms.AES(key),
-        modes.GCM(iv),
+    """Double-encrypt the plaintext using AES-GCM with a 512-bit key."""
+    key1, key2 = key[:32], key[32:]
+
+    # First encryption
+    iv1 = os.urandom(12)
+    encryptor1 = Cipher(
+        algorithms.AES(key1),
+        modes.GCM(iv1),
         backend=default_backend()
     ).encryptor()
+    encryptor1.authenticate_additional_data(associated_data)
+    ciphertext1 = encryptor1.update(plaintext) + encryptor1.finalize()
 
-    # Add associated data (not encrypted but authenticated)
-    encryptor.authenticate_additional_data(associated_data)
+    # Second encryption
+    iv2 = os.urandom(12)
+    encryptor2 = Cipher(
+        algorithms.AES(key2),
+        modes.GCM(iv2),
+        backend=default_backend()
+    ).encryptor()
+    encryptor2.authenticate_additional_data(associated_data)
+    ciphertext2 = encryptor2.update(ciphertext1) + encryptor2.finalize()
 
-    # Encrypt the plaintext
-    ciphertext = encryptor.update(plaintext) + encryptor.finalize()
+    return iv1, iv2, ciphertext2, encryptor1.tag, encryptor2.tag
 
-    return iv, ciphertext, encryptor.tag
+def aes_gcm_decrypt(key, iv1, iv2, ciphertext, associated_data, tag1, tag2):
+    """Double-decrypt the ciphertext using AES-GCM with a 512-bit key."""
+    key1, key2 = key[:32], key[32:]
 
-
-# AES-GCM decryption
-def aes_gcm_decrypt(key, iv, ciphertext, associated_data, tag):
-    decryptor = Cipher(
-        algorithms.AES(key),
-        modes.GCM(iv, tag),
+    # First decryption (reverse order)
+    decryptor2 = Cipher(
+        algorithms.AES(key2),
+        modes.GCM(iv2, tag2),
         backend=default_backend()
     ).decryptor()
+    decryptor2.authenticate_additional_data(associated_data)
+    intermediate_plaintext = decryptor2.update(ciphertext) + decryptor2.finalize()
 
-    # Add associated data (must match what was provided during encryption)
-    decryptor.authenticate_additional_data(associated_data)
-
-    # Decrypt the ciphertext
-    plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+    # Second decryption
+    decryptor1 = Cipher(
+        algorithms.AES(key1),
+        modes.GCM(iv1, tag1),
+        backend=default_backend()
+    ).decryptor()
+    decryptor1.authenticate_additional_data(associated_data)
+    plaintext = decryptor1.update(intermediate_plaintext) + decryptor1.finalize()
 
     return plaintext
+
 
 
 def sha3_512(bytes: bytes) -> bytes:

@@ -7,8 +7,9 @@ from ecdsa import NIST521p as CURVE
 from ecdsa import SigningKey
 
 import utils
-from homework2.lecture3.tls.bonus.tls_utils import aes_gcm_encrypt, key_schedule_1, sigma_sign, key_schedule_2, hmac_mac, \
-    key_schedule_3, aes_gcm_decrypt, hmac_verify
+from homework2.lecture3.tls.bonus.tls_utils import key_schedule_1, sigma_sign, key_schedule_2, \
+    hmac_mac, \
+    key_schedule_3, hmac_verify, aes_gcm_decrypt, aes_gcm_encrypt
 
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 54321
 client_port = int(sys.argv[2]) if len(sys.argv) > 2 else 12345
@@ -81,18 +82,22 @@ def main():
     K3C, K3S = key_schedule_3(nonce_c, utils.to_bytes(X), nonce_s, utils.to_bytes(Y), X_y, sigma_s, cert_pk_s, mac_s)
 
     print("Sending cert, sigma and mac_s to the client using aes_gcm...")
-    iv, cipher, tag = aes_gcm_encrypt(K1S, cert_pk_s + b"$$$" + sigma_s + b"$$$" + mac_s, utils.to_bytes(Y))
-    send(iv)
-    send(cipher)
-    send(tag)
+    iv1, iv2, ciphertext, tag1, tag2 = aes_gcm_encrypt(K1S, cert_pk_s + b"$$$" + sigma_s + b"$$$" + mac_s, utils.to_bytes(Y))
+    send(iv1)
+    send(iv2)
+    send(ciphertext)
+    send(tag1)
+    send(tag2)
 
     print("Waiting for the client to send its mac the connection...")
-    iv_c = receive()
+    iv1_c = receive()
+    iv2_c = receive()
     cipher_c = receive()
-    tag_c = receive()
+    tag1_c = receive()
+    tag2_c = receive()
 
     print("Decrypting the client's mac...")
-    mac_c = aes_gcm_decrypt(K1C, iv_c, cipher_c, utils.to_bytes(Y), tag_c)
+    mac_c = aes_gcm_decrypt(K1C, iv1_c, iv2_c, cipher_c, utils.to_bytes(Y), tag1_c, tag2_c)
 
     print("Verifying the client's mac...")
     if not hmac_verify(K2C, nonce_c + utils.to_bytes(X) + nonce_s + utils.to_bytes(Y) + sigma_s + cert_pk_s + b"ClientMAC", mac_c):

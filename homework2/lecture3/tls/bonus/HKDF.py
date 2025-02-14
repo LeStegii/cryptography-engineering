@@ -2,8 +2,8 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, hmac
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-HASH_FUNC = hashes.SHA3_512() # Use SHA256
-KEY_LEN = 64 # 32 bytes
+HASH_FUNC = hashes.SHA3_512() # Use SHA3_512
+KEY_LEN = 64 # 64 bytes = 512 bits
 
 # HKDF.Extract
 def hkdf_extract(salt, input_key_material, length=KEY_LEN):

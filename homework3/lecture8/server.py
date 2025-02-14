@@ -52,8 +52,6 @@ def start_ssl_server(host="localhost", port=12345, certfile="server.pem", keyfil
 
             h_n = H(n, password, r)
 
-            print(h_n)
-
             database[username] = (r, n, h_n)
             save_passwords("passwords.csv")
 
@@ -74,7 +72,6 @@ def start_ssl_server(host="localhost", port=12345, certfile="server.pem", keyfil
             "n": database[username][1]
         }
 
-        print(database[username][1])
 
         send_message(conn, utils.encode_message(server_first))
 

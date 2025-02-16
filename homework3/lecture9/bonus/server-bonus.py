@@ -97,16 +97,16 @@ def start_ssl_server(host="localhost", port=12345, certfile="server.pem", keyfil
 
         print("Shared secret generated: " + SK.hex())
 
-        key = hkdf_expand(SK, b"key", 32 * 2)
+        key = hkdf_expand(SK, b"Key Confirmation", 32 * 2)
         K_C, K_S = key[:32], key[32:]
 
-        mac_c = utils.HMAC(K_C, b"Client KC")
-        mac_s_1 = utils.HMAC(K_S, b"Server KC")
+        mac_c_1 = utils.HMAC(K_C, b"Client KC")
+        mac_s = utils.HMAC(K_S, b"Server KC")
 
-        send_message(conn, utils.encode_message({"mac_c": mac_c}))
-        mac_s = utils.decode_message(receive_message(conn))["mac_s"]
+        send_message(conn, utils.encode_message({"mac_s": mac_s}))
+        mac_c = utils.decode_message(receive_message(conn))["mac_c"]
 
-        if mac_s != mac_s_1:
+        if mac_c != mac_c_1:
             print("Couldn't validate mac_s from client.")
             return
 

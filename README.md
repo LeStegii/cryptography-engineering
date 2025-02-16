@@ -83,6 +83,8 @@ This has been implemented in [`homework2/lecture3/tls`](homework2/lecture3/tls).
 
 - Bonus: Implement the same protocol, but this time use SHA3-512 as the hash function (for HKDF, HMAC, and the key schedule) and P-521 as the elliptic curve for key exchange. This should allow you to derive a key with 512 bits (64 bytes).
 
+This has been implemented in [`homework2/lecture3/bonus`](homework2/lecture3/bonus).
+
 ### Lecture 4
 
 #### Tasks

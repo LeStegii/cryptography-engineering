@@ -30,7 +30,7 @@ def start_ssl_server(host="localhost", port=12345, certfile="server.pem", keyfil
             send_message(conn, utils.encode_message({"status": "NOT_REGISTERED"}))
             pw = utils.decode_message(receive_message(conn))["password"]
 
-            if pw is None or len(pw) < 1:
+            if pw is None:
                 print("Received empty password.")
                 conn.close()
                 return

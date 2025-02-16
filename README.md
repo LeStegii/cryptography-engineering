@@ -148,4 +148,4 @@ This has all been done in one task in [`homework3/lecture9`](homework3/lecture9/
 
 (Bonus) What is the RTT of the OPAQUE protocol in the non-bonus homework? Can you improve it? If so, implement your improved version (can be without sockets)
 
-The solution can be found in the [README](homework3/lecture9/README.md).
+The solution can be found in the [README](homework3/lecture9/README.md) and in [`homework3/lecture9/bonus/`](homework3/lecture9/bonus/).

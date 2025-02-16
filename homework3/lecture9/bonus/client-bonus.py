@@ -39,8 +39,9 @@ def start_ssl_client(host="localhost", port=12345, cafile="server.pem"):
             h_pw = h(pw.encode())
             a = random_z_q()
             h_pw_a = power(h_pw, a)
+            X, x = AKE_KeyGen() # Generate key here in order to send it in the first message
 
-            send_message(ssock, utils.encode_message({"h_pw_a": h_pw_a}))
+            send_message(ssock, utils.encode_message({"h_pw_a": h_pw_a, "X": X})) # Send the key here
 
             login_answer = utils.decode_message(receive_message(ssock))
 
@@ -48,6 +49,7 @@ def start_ssl_client(host="localhost", port=12345, cafile="server.pem"):
             enc_client_keys = login_answer["enc_client_keys"]
             iv = login_answer["iv"]
             tag = login_answer["tag"]
+            Y = login_answer["Y"] # Receive the server key here
 
             a_inv = inverse(a)
             hp_pw_s = power(h_pw_a_s, a_inv)
@@ -71,10 +73,11 @@ def start_ssl_client(host="localhost", port=12345, cafile="server.pem"):
 
             a = lsk_c
             B = lpk_s
-            X, x = AKE_KeyGen()
 
-            send_message(ssock, utils.encode_message({"X": X}))
-            Y = utils.decode_message(receive_message(ssock))["Y"]
+            # Move this part up to reduce RTT
+            #X, x = AKE_KeyGen()
+            #send_message(ssock, utils.encode_message({"X": X}))
+            #Y = utils.decode_message(receive_message(ssock))["Y"]
 
             SK = HMQV_KClient(a, x, X, B, Y, username, host)
 

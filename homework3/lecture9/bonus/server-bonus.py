@@ -1,8 +1,6 @@
 import socket
 import ssl
 
-from ecdsa.ellipticcurve import Point
-
 import utils
 from homework2.lecture3.tls.HKDF import hkdf_expand
 from homework3.Database import Database
@@ -63,17 +61,21 @@ def start_ssl_server(host="localhost", port=12345, certfile="server.pem", keyfil
 
         print("Waiting for login request...")
 
-        h_pw_a: Point = utils.decode_message(receive_message(conn))["h_pw_a"]
+        login_answer = utils.decode_message(receive_message(conn))
+        h_pw_a = login_answer["h_pw_a"]
+        X = login_answer["X"] # Receive the client key here
 
         user_data = database.get(username)
 
         h_pw_a_s = power(h_pw_a, user_data["s"])
+        Y, y = AKE_KeyGen() # Generate key here in order to send it in the first message
 
         send_message(conn, utils.encode_message({
             "h_pw_a_s": h_pw_a_s,
             "enc_client_keys": user_data["enc_client_keys"],
             "iv": user_data["iv"],
-            "tag": user_data["tag"]
+            "tag": user_data["tag"],
+            "Y": Y # Send the server key here
         }))
 
         server_k_bundle = user_data["server_key_bundle"]  # (lpk_c, lpk_s, lsk_s)
@@ -85,10 +87,11 @@ def start_ssl_server(host="localhost", port=12345, certfile="server.pem", keyfil
         # AKE
         b = server_k_bundle["lsk_s"]
         A = server_k_bundle["lpk_c"]
-        Y, y = AKE_KeyGen()
 
-        X = utils.decode_message(receive_message(conn))["X"]
-        send_message(conn, utils.encode_message({"Y": Y}))
+        # Move this part up to reduce RTT
+        #Y, y = AKE_KeyGen()
+        #X = utils.decode_message(receive_message(conn))["X"]
+        #send_message(conn, utils.encode_message({"Y": Y}))
 
         SK = HMQV_KServer(b, y, Y, A, X, username, host)
 

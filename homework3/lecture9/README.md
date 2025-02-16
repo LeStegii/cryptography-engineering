@@ -10,7 +10,7 @@
 # What is the RTT of OPAQUE?
 
 Answer: 3 RTT
-Reason: First, one RTT is needed for the OPRF, one for the AKE and one for the confirmation. The registration only needs have a RTT since the server doesn't have to answer.
+Reason: First, one RTT is needed for the OPRF, one for the AKE and one for the confirmation.
 
 To reduce the RTT, the X and Y public keys can be sent with the message before instead of having a separate one.
 In order to use the implementation, follow the steps above but in the `bonus` folder.

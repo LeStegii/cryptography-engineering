@@ -50,8 +50,8 @@ def AKE_KeyGen() -> tuple[Point, int]:
     return Point.from_bytes(Hash2Curve.P256.curve, public_key.to_bytes()), private_key
 
 def HMQV_KClient(a: int, x: int, X: Point, B: Point, Y: Point, client: str, server: str):
-    d = bytes_to_int(utils.sha256(point_to_bytes(X) + client.encode())) % Hash2Curve.q
-    e = bytes_to_int(utils.sha256(point_to_bytes(Y) + server.encode())) % Hash2Curve.q
+    d = bytes_to_int(utils.sha256(point_to_bytes(X) + server.encode())) % Hash2Curve.q
+    e = bytes_to_int(utils.sha256(point_to_bytes(Y) + client.encode())) % Hash2Curve.q
 
     ss = power(power(B, e) + Y, (x + d * a) % Hash2Curve.q)
 
@@ -59,8 +59,8 @@ def HMQV_KClient(a: int, x: int, X: Point, B: Point, Y: Point, client: str, serv
     return SK
 
 def HMQV_KServer(b: int, y: int, Y: Point, A: Point, X: Point, client: str, server: str):
-    d = bytes_to_int(utils.sha256(point_to_bytes(X) + client.encode())) % Hash2Curve.q
-    e = bytes_to_int(utils.sha256(point_to_bytes(Y) + server.encode())) % Hash2Curve.q
+    d = bytes_to_int(utils.sha256(point_to_bytes(X) + server.encode())) % Hash2Curve.q
+    e = bytes_to_int(utils.sha256(point_to_bytes(Y) + client.encode())) % Hash2Curve.q
 
     ss = power(power(A, d) + X, (y + e * b) % Hash2Curve.q)
 

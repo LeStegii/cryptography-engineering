@@ -31,7 +31,7 @@ def start_ssl_server(host="localhost", port=12345, certfile="server.pem", keyfil
         conn, addr = ssock.accept()
 
         tls_info = {
-            "version": "TLS"
+            "version": "TLS" # Under normal circumstances, this would be retrieved from the TLS handshake
         }
 
         print(f"Connection established with {addr}")

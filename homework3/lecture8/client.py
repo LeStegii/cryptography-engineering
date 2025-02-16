@@ -20,7 +20,7 @@ def start_ssl_client(host="localhost", port=12345, cafile="server.pem"):
             print(f"Connected to {host}:{port}")
 
             tls_info = {
-                "version": "TLS"
+                "version": "TLS" # Under normal circumstances, this would be retrieved from the TLS handshake
             }
 
             print("Sending username...")

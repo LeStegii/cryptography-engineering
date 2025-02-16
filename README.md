@@ -63,7 +63,8 @@ For more information see the [README](homework1/lecture2/mitm_attack/sockets/REA
    4. Bob, upon receiving (pk_alice, signature of pk_alice), verifies the signature with the server’s public key. If the signature is valid, Bob accepts pk_alice. Next, Bob requests a signature for his own public key from the server, following a similar process as Alice.
    5. Finally, Bob sends (pk_bob, signature of pk_bob) to Alice. Alice verifies the signature using the server’s public key and, if valid, accepts pk_bob.
 
-TODO
+This has been implemented in [`homework1/lecture2/bonus`](homework1/lecture2/bonus).
+For more information see the [README](homework1/lecture2/bonus/README.md).
 
 ### Lecture 3
 

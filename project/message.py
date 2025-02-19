@@ -1,6 +1,21 @@
+from typing import Optional
+
 import utils
 
 MESSAGE = "message"
+FORWARD = "forward"
+REGISTER = "register"
+LOGIN = "login"
+EXIT = "exit"
+STATUS = "status_request"
+IDENTITY = "identity"
+
+REQUEST_SALT = "request_salt"
+ANSWER_SALT = "answer_salt"
+SEND_PASSWORD = "send_password"
+
+ERROR = "error"
+SUCCESS = "success"
 
 
 class Message:
@@ -24,7 +39,13 @@ class Message:
             "type": self.type
         })
 
+    def dict(self) -> dict[str, any]:
+        return utils.decode_message(self.content)
+
     @staticmethod
-    def from_bytes(data: bytes) -> "Message":
-        message = utils.decode_message(data)
-        return Message(message["content"], message["sender"], message["receiver"], message["type"])
+    def from_bytes(data: bytes) -> Optional["Message"]:
+        try:
+            message = utils.decode_message(data)
+            return Message(message["content"], message["sender"], message["receiver"], message["type"])
+        except:
+            return None

@@ -62,6 +62,18 @@ class Database:
             raise TypeError("Key must be a string or bytes")
         return self.data.get(key if isinstance(key, str) else key.decode())
 
+    def update(self, key: str | bytes, value: Any, save: bool = True):
+        if not isinstance(key, (str, bytes)):
+            raise TypeError("Key must be a string or bytes")
+
+        if isinstance(value, dict):
+            self.data[key if isinstance(key, str) else key.decode()].update(value)
+        else:
+            self.data[key if isinstance(key, str) else key.decode()] = value
+        if save:
+            self.save()
+
+
     def delete(self, key: str | bytes, save: bool = True):
         if not isinstance(key, (str, bytes)):
             raise TypeError("Key must be a string or bytes")
@@ -74,3 +86,8 @@ class Database:
             encoded = utils.encode_message(self.data)
             iv, cipher, tag = encode_database(encoded, self.key)
             writer.writerow([iv.hex(), cipher.hex(), tag.hex()])
+
+    def has(self, key: str | bytes) -> bool:
+        if not isinstance(key, (str, bytes)):
+            raise TypeError("Key must be a string or bytes")
+        return (key if isinstance(key, str) else key.decode()) in self.data

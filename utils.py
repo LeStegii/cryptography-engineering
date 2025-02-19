@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from ecdsa import util, VerifyingKey, SigningKey, ECDH  # pip install ecdsa
-from ecdsa.curves import Curve, curves, NIST256p
+from ecdsa.curves import Curve, NIST256p
 from ecdsa.ellipticcurve import Point, PointJacobi
 
 
@@ -98,46 +98,49 @@ def ecdsa_verify(signature, message, public_key):
         return False
 
 
-def encode_message(message: dict[str, str | SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | Point | bytes | dict | int | None]) -> bytes:
+def encode_message(message: dict[str, str | SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | Point | bytes | dict | int | None | bool]) -> bytes:
     dictionary = {}
-    for key, value in message.items():
-        if value is None:
-            dictionary[key + "||NONE"] = "NONE".encode().hex()
-        if isinstance(value, str):
-            dictionary[key + "||STR"] = value.encode().hex()
-        elif isinstance(value, SigningKey):
-            dictionary[key + "||SK"] = value.to_pem().hex()
-        elif isinstance(value, VerifyingKey):
-            dictionary[key + "||VK"] = value.to_pem().hex()
-        elif isinstance(value, EllipticCurvePrivateKey):
-            dictionary[key + "||ECSK"] = value.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.PKCS8,
-                encryption_algorithm=serialization.NoEncryption()
-            ).hex()
-        elif isinstance(value, EllipticCurvePublicKey):
-            dictionary[key + "||ECPK"] = value.public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo
-            ).hex()
-        elif isinstance(value, Curve):
-            dictionary[key + "||CURVE"] = value.to_der().hex()
-        elif isinstance(value, Point) or isinstance(value, PointJacobi):
-            dictionary[key + "||POINT"] = value.to_bytes().hex()
-        elif isinstance(value, bytes):
-            dictionary[key + "||BYTE"] = value.hex()
-        elif isinstance(value, int):
-            dictionary[key + "||INT"] = value.to_bytes(32, byteorder="big").hex()
-        elif isinstance(value, dict):
-            dictionary[key + "||DICT"] = encode_message(value).hex()
-        else:
-            raise ValueError(f"Unsupported type: {type(value)}")
+    if message:
+        for key, value in message.items():
+            if value is None:
+                dictionary[key + "||NONE"] = "NONE".encode().hex()
+            elif isinstance(value, str):
+                dictionary[key + "||STR"] = value.encode().hex()
+            elif isinstance(value, bool):
+                dictionary[key + "||BOOL"] = value
+            elif isinstance(value, SigningKey):
+                dictionary[key + "||SK"] = value.to_pem().hex()
+            elif isinstance(value, VerifyingKey):
+                dictionary[key + "||VK"] = value.to_pem().hex()
+            elif isinstance(value, EllipticCurvePrivateKey):
+                dictionary[key + "||ECSK"] = value.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.PKCS8,
+                    encryption_algorithm=serialization.NoEncryption()
+                ).hex()
+            elif isinstance(value, EllipticCurvePublicKey):
+                dictionary[key + "||ECPK"] = value.public_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo
+                ).hex()
+            elif isinstance(value, Curve):
+                dictionary[key + "||CURVE"] = value.to_der().hex()
+            elif isinstance(value, Point) or isinstance(value, PointJacobi):
+                dictionary[key + "||POINT"] = value.to_bytes().hex()
+            elif isinstance(value, bytes):
+                dictionary[key + "||BYTE"] = value.hex()
+            elif isinstance(value, int):
+                dictionary[key + "||INT"] = value.to_bytes(32, byteorder="big").hex()
+            elif isinstance(value, dict):
+                dictionary[key + "||DICT"] = encode_message(value).hex()
+            else:
+                raise ValueError(f"Unsupported type: {type(value)}")
 
     return json.dumps(dictionary).encode()
 
 
 def decode_message(encoded: bytes) -> dict[
-    str, str | SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | Point | bytes | dict | int]:
+    str, str | SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | Point | bytes | dict | int | bool | None]:
 
 
     decoded = json.loads(encoded.decode())
@@ -148,6 +151,8 @@ def decode_message(encoded: bytes) -> dict[
             decoded_message[key] = None
         if type_ == "STR":
             decoded_message[key] = bytes.fromhex(value).decode()
+        elif type_ == "BOOL":
+            decoded_message[key] = value
         elif type_ == "SK":
             decoded_message[key] = SigningKey.from_pem(bytes.fromhex(value).decode())
         elif type_ == "VK":
@@ -215,3 +220,7 @@ def power(exponent: SigningKey, base: VerifyingKey, curve = ec.SECP256R1()):
 
 def HMAC(key: bytes, content: bytes) -> bytes:
     return hmac.new(key, content, hashlib.sha256).digest()
+
+
+def salt_password(password: str | bytes, salt: bytes) -> bytes:
+    return HMAC(salt, password.encode() if isinstance(password, str) else password)

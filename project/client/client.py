@@ -10,9 +10,10 @@ from ecdsa import SigningKey, VerifyingKey
 
 import utils
 from project import project_utils
+from project.client import x3dh
 from project.database import Database
 from project.message import Message, MESSAGE, REGISTER, LOGIN, IDENTITY, ANSWER_SALT, REQUEST_SALT, ERROR, \
-    SUCCESS, STATUS, NOT_REGISTERED, REGISTERED
+    SUCCESS, STATUS, NOT_REGISTERED, REGISTERED, X3DH_REQUEST, X3DH_REACTION
 from project.project_utils import is_valid_message, debug
 
 enable_debug = True
@@ -34,7 +35,9 @@ class Client:
             STATUS: self.handle_status,
             LOGIN: self.handle_login,
             ANSWER_SALT: self.handle_answer_salt,
-            MESSAGE: self.handle_message
+            MESSAGE: self.handle_message,
+            X3DH_REQUEST: self.handle_x3dh_answer,
+            X3DH_REACTION: self.handle_x3dh_reaction
         }
 
         # Add event to signal when to stop threads
@@ -73,7 +76,7 @@ class Client:
                 # Use select to check if data is available to read on the socket
                 readable, _, _ = select.select([self.client_socket], [], [], 1.0)  # 1 second timeout
                 if readable:
-                    message_bytes = self.client_socket.recv(4096)
+                    message_bytes = self.client_socket.recv(8096)
                     if not message_bytes:
                         debug("Connection closed.")
                         break
@@ -84,7 +87,7 @@ class Client:
                         if not handler(message):
                             break
                     else:
-                        debug("Connection closed by server.")
+                        debug("Server sent invalid message! Closing connection.")
                         break
         except (ConnectionResetError, OSError):
             debug("Connection closed.")
@@ -114,7 +117,10 @@ class Client:
                     if receiver == self.username:
                         debug("You cannot send messages to yourself.")
                     else:
-                        self.send(receiver, {"message": msg})
+                        if not self.database.get(receiver):
+                            debug(f"{receiver} is not in the database, requesting their key bundle...")
+                            self.send("server", {"target": receiver}, X3DH_REQUEST)
+                            print("Waiting for response...")
                 else:
                     debug("Invalid message format. Please enter in the format '<receiver> <message>'.")
 
@@ -128,7 +134,7 @@ class Client:
         self.username = input("Enter your username: ")
         debug(f"Connected to server {self.host}:{self.port} as {self.username}.")
 
-        self.database = Database(f"{self.username}-db.csv", f"{self.username}-key.txt")
+        self.database = Database(f"db/{self.username}/database.csv", f"db/{self.username}/key.txt")
 
         self.receive_thread = threading.Thread(target=self.receive_message, daemon=True)
         self.receive_thread.start()
@@ -165,7 +171,7 @@ class Client:
                 "IPK": keys["IPK"],
                 "SPK": keys["SPK"],
                 "OPKs": keys["OPKs"],
-                "sigma": utils.ecdsa_sign(keys["SPK"].to_string(), keys["ik"])
+                "sigma": utils.ecdsa_sign(keys["SPK"].to_pem(), keys["ik"])
             }
             debug("Sending registration request to server...")
             self.send("server", {"password": password, "keys": key_bundle}, REGISTER)
@@ -228,6 +234,51 @@ class Client:
             debug(f"Received empty message from {message.sender}.")
         else:
             debug(f"{message.sender}: {content}")
+        return True
+
+    def handle_x3dh_answer(self, message: Message) -> bool:
+        content = message.dict()
+        key_bundle_b = content.get("key_bundle")
+        if not key_bundle_b:
+            debug(f"Received invalid key bundle for {content.get("target")} from server.")
+            return True
+
+        keys = self.load_or_gen_keys()
+        sigma_B = key_bundle_b.get("sigma")
+        IPK_B = key_bundle_b.get("IPK")
+        SPK_B = key_bundle_b.get("SPK")
+        OPK_B = key_bundle_b.get("OPK")
+
+        if not utils.ecdsa_verify(sigma_B, SPK_B.to_pem(), IPK_B):
+            debug("Invalid signature for SPK_B. Aborting X3DH.")
+        else:
+            debug("Computing shared secret...")
+            shared_secret = x3dh.x3dh_key(keys["ik"], keys["sk"], IPK_B, SPK_B, OPK_B)
+            self.database.insert(content.get("target"), {"shared_secret": shared_secret})
+            debug(f"Shared secret computed and saved for {content.get('target')}: {shared_secret.hex()}")
+
+        return True
+
+    def handle_x3dh_reaction(self, message: Message) -> bool:
+        content = message.dict()
+        key_bundle_a = content.get("key_bundle")
+        if not key_bundle_a:
+            debug(f"Received invalid key bundle for {content.get('target')} from server.")
+            return True
+
+        keys = self.load_or_gen_keys()
+        sigma_A = key_bundle_a.get("sigma")
+        IPK_A = key_bundle_a.get("IPK")
+        SPK_A = key_bundle_a.get("SPK")
+        OPK_A = key_bundle_a.get("OPK")
+
+        if not utils.ecdsa_verify(sigma_A, SPK_A.to_pem(), IPK_A):
+            debug("Invalid signature for SPK_A. Aborting X3DH.")
+        else:
+            debug("Computing shared secret...")
+            shared_secret = x3dh.x3dh_key_reaction(IPK_A, SPK_A, keys["ik"], keys["sk"], keys["oks"][0])
+            self.database.insert(content.get("target"), {"shared_secret": shared_secret})
+            debug(f"Shared secret computed and saved for {content.get('target')}: {shared_secret.hex()}")
         return True
 
     def handle_unknown(self, message: Message):

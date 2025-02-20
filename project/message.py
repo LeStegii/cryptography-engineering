@@ -1,3 +1,4 @@
+from traceback import print_exc
 from typing import Optional
 
 import utils
@@ -19,6 +20,9 @@ SEND_PASSWORD = "send_password"
 
 ERROR = "error"
 SUCCESS = "success"
+
+X3DH_REQUEST = "x3dh_request"
+X3DH_REACTION = "x3dh_reaction"
 
 
 class Message:
@@ -54,4 +58,5 @@ class Message:
             message = utils.decode_message(data)
             return Message(message["content"], message["sender"], message["receiver"], message["type"])
         except:
+            print_exc()
             return None

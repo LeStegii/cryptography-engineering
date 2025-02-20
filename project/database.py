@@ -13,6 +13,7 @@ def load_or_create_key(key_path: str):
             key = bytes.fromhex(key_file.read().decode())
     else:
         key = os.urandom(32)
+        path.parent.mkdir(parents=True, exist_ok=True)
         with open(key_path, "wb") as key_file:
             key_file.write(key.hex().encode())
     return key
@@ -38,6 +39,7 @@ class Database:
         if not Path(path).exists():
             return {}
 
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "r") as file:
             reader = csv.reader(file)
             cipher: list[str] = reader.__next__()
@@ -81,6 +83,7 @@ class Database:
 
     def save(self):
 
+        Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         with open(self.path, "w") as file:
             writer = csv.writer(file)
             encoded = utils.encode_message(self.data)

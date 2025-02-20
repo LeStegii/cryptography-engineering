@@ -7,10 +7,9 @@ from ssl import SSLSocket
 from typing import Optional
 
 import utils
-from project.client.client import enable_debug
 from project.database import Database
 from project.message import MESSAGE, Message, STATUS, REGISTER, REQUEST_SALT, ANSWER_SALT, IDENTITY, LOGIN, ERROR, \
-    SUCCESS, REGISTERED, NOT_REGISTERED
+    SUCCESS, REGISTERED, NOT_REGISTERED, X3DH_REQUEST, X3DH_REACTION
 from project.project_utils import is_valid_message, debug, check_username
 
 
@@ -22,13 +21,14 @@ class Server:
         self.sockets: dict[tuple[str, int], ssl.SSLSocket] = {}  # List of connected clients (addr, socket)
         self.connections: dict[str, tuple[str, int]] = {}  # List of connected clients (username, addr)
 
-        self.database = Database("database.csv", "server-key.txt")
+        self.database = Database("db/database.csv", "db/server-key.txt")
 
         self.handlers: dict[str, any] = {
             REGISTER: self.handle_register,
             LOGIN: self.handle_login,
             REQUEST_SALT: self.handle_request_salt,
-            MESSAGE: self.handle_message
+            MESSAGE: self.handle_message,
+            X3DH_REQUEST: self.handle_x3dh_request
         }
 
     def username(self, addr: tuple[str, int]) -> Optional[str]:
@@ -135,7 +135,8 @@ class Server:
                     if message.type:
 
                         if message.receiver != "server" and type != MESSAGE:
-                            debug(f"{message.sender} ({addr}) tried to send a non-message type message to {message.receiver}.")
+                            debug(
+                                f"{message.sender} ({addr}) tried to send a non-message type message to {message.receiver}.")
                             continue
 
                         handler = self.handlers.get(type, self.handle_unknown)
@@ -145,8 +146,7 @@ class Server:
                     debug(f"Client {addr} sent an invalid message. Closing connection.")
                     break
         except Exception as e:
-            if enable_debug:
-                traceback.print_exc()
+            traceback.print_exc()
             debug(f"Error with client {addr}: {e}")
         finally:
             client_socket.close()
@@ -200,7 +200,8 @@ class Server:
             return
 
         salted_password = utils.salt_password(password, self.database.get(message.sender).get("salt"))
-        self.database.update(message.sender, {"salted_password": salted_password, "keys": key_bundle, "registered": True})
+        self.database.update(message.sender,
+                             {"salted_password": salted_password, "keys": key_bundle, "registered": True})
         self.send(message.sender, {"status": SUCCESS, "salt": salt}, REGISTER)
 
     def handle_request_salt(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
@@ -208,9 +209,7 @@ class Server:
         self.send(message.sender, {"salt": self.get_or_gen_salt(message.sender)}, ANSWER_SALT)
 
     def handle_unknown(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
-        debug(
-            f"{message.sender} ({addr}) sent message of unknown type '{message.type}'. Closing connection to be safe.")
-        client.close()
+        debug(f"{message.sender} ({addr}) sent message of unknown type '{message.type}'.")
 
     def handle_message(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
         if not self.is_logged_in(message.sender):
@@ -224,7 +223,46 @@ class Server:
             return
 
         debug(f"{message.sender} ({addr}) sent a message to {message.receiver}.")
-        self.send_bytes(message.to_bytes(), message.receiver) # Forward the message to the recipient
+        self.send_bytes(message.to_bytes(), message.receiver)  # Forward the message to the recipient
+
+    def handle_x3dh_request(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
+        target = message.dict().get("target")
+        if not target or not check_username(target):
+            debug(f"{message.sender} ({addr}) sent an X3DH_REQUEST without a valid target.")
+            self.send(message.sender, {"status": ERROR, "error": "No valid target specified."}, X3DH_REACTION)
+            return
+
+        if not self.is_registered(target):
+            debug(f"{message.sender} ({addr}) sent an X3DH_REQUEST to an unregistered user ({target}).")
+            self.send(message.sender, {"status": ERROR, "error": f"{target} is not registered."}, X3DH_REACTION)
+            return
+
+        keys = self.database.get(target).get("keys")
+        if not keys:
+            debug(
+                f"{message.sender} ({addr}) sent an X3DH_REQUEST to {target}, but the user has no keys (something went wrong here!).")
+            self.send(message.sender, {"status": ERROR, "error": f"Key request for {target} failed."}, X3DH_REACTION)
+            return
+
+        debug(f"{message.sender} ({addr}) sent an X3DH_REQUEST to {target}. Sending keys.")
+
+        if len(keys.get("OPKs")) == 0:
+            debug(f"{target} has no one-time prekeys left. Requesting new ones.")
+            # TODO: Implement one-time prekey generation
+
+        try:
+
+            key_bundle = {
+                "IPK": keys.get("IPK"),
+                "SPK": keys.get("SPK"),
+                "OPK": keys.get("OPKs")[0],
+                "sigma": keys.get("sigma")
+            }
+
+        except Exception:
+            print("Error")
+
+        self.send(message.sender, {"status": SUCCESS, "key_bundle": key_bundle}, X3DH_REACTION)
 
     def get_or_gen_salt(self, sender: str) -> bytes:
         """

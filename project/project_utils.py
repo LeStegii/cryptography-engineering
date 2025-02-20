@@ -25,7 +25,7 @@ def debug(message: str) -> None:
 
 def check_username(username: str) -> bool:
     """Check if the username is valid."""
-    return isinstance(username, str) and username.isalnum() and 4 <= len(username) <= 16
+    return isinstance(username, str) and username.isalnum() and 1 <= len(username) <= 16
 
 
 def generate_initial_x3dh_keys():

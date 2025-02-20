@@ -213,3 +213,29 @@ def HMAC(key: bytes, content: bytes) -> bytes:
 
 def salt_password(password: str | bytes, salt: bytes) -> bytes:
     return HMAC(salt, password.encode() if isinstance(password, str) else password)
+
+# HKDF.Extract
+def hkdf_extract(salt, input_key_material, length=32):
+    # Extract: Derive the PRK (pseudorandom key)
+    hkdf_extract = HKDF(
+        algorithm=HASH_FUNC,
+        length=length,             # Length of the PRK (match SHA-256 output: 32 bytes)
+        salt=salt,             # Salt can be any value or None
+        info=None,             # No info for Extract phase
+        backend=default_backend()
+    )
+    prk = hkdf_extract.derive(input_key_material)
+    return prk
+
+# HKDF.Expand
+def hkdf_expand(prk, info, length=32):
+    # Expand: Derive the final key from the PRK
+    hkdf_expand = HKDF(
+        algorithm=HASH_FUNC,
+        length=length,         # Desired output length of the final derived key
+        salt=None,             # No salt in the Expand phase (PRK is used directly as key)
+        info=info,             # Context-specific info parameter
+        backend=default_backend()
+    )
+    derived_key = hkdf_expand.derive(prk)
+    return derived_key

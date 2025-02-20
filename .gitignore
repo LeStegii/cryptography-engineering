@@ -83,3 +83,4 @@ fabric.properties
 **/peppering.txt
 **/*key*.txt
 **/database.csv
+**/*-db.csv

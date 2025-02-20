@@ -14,7 +14,7 @@ from project.message import MESSAGE, Message, STATUS, REGISTER, REQUEST_SALT, AN
 
 
 class Server:
-    def __init__(self, host: str = "localhost", port: int = 25566):
+    def __init__(self, host: str = "localhost", port: int = 25567):
         self.host: str = host
         self.port: int = port
         self.server_socket: Optional[ssl.SSLSocket] = None
@@ -241,10 +241,5 @@ class Server:
 
 
 if __name__ == "__main__":
-    import sys
-
-    HOST = "localhost" if len(sys.argv) < 3 else sys.argv[2]
-    PORT = 25566 if len(sys.argv) < 4 else int(sys.argv[3])
-
-    server = Server(HOST, PORT)
+    server = Server()
     server.start()

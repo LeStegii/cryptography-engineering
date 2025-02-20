@@ -1,6 +1,7 @@
 import socket
 import ssl
 import threading
+import time
 import traceback
 from typing import Optional
 
@@ -12,7 +13,7 @@ from project.message import Message, MESSAGE, STATUS, REGISTER, LOGIN, IDENTITY,
 enable_debug = True
 
 class Client:
-    def __init__(self, host="localhost", port=25566):
+    def __init__(self, host="localhost", port=25567):
         self.host: str = host
         self.port: int = port
         self.client_socket: Optional[ssl.SSLSocket] = None
@@ -51,6 +52,9 @@ class Client:
         try:
             while True:
                 message_bytes = self.client_socket.recv(4096)
+                if not message_bytes:
+                    print("Connection closed.")
+                    break
                 message = Message.from_bytes(message_bytes)
                 if message:
                     type = message.type
@@ -113,15 +117,14 @@ class Client:
                 else:
                     print("Connection closed by server.")
                     break
-        except ConnectionResetError:
-            traceback.print_exc()
-            print("Connection was reset by the server.")
+        except (ConnectionResetError, OSError):
+            print("Connection closed.")
         except Exception:
             traceback.print_exc()
             print("Error receiving message.")
         finally:
-            print("Closing connection.")
-            self.client_socket.close()
+            if self.client_socket:
+                self.client_socket.close()
 
     def send_messages(self):
         try:
@@ -150,6 +153,7 @@ class Client:
         receive_thread = threading.Thread(target=self.receive_message, daemon=True)
         receive_thread.start()
 
+        time.sleep(0.1)
         self.send("server", {"username": self.username}, IDENTITY) # Send the identity message to the server
 
         # Wait for the receive thread to finish
@@ -169,10 +173,5 @@ def debug(message: str):
         print(f"DEBUG: {message}")
 
 if __name__ == "__main__":
-    import sys
-
-    HOST = "localhost" if len(sys.argv) < 3 else sys.argv[2]
-    PORT = 25566 if len(sys.argv) < 4 else int(sys.argv[3])
-
-    client = Client(HOST, PORT)
+    client = Client()
     client.start()

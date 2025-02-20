@@ -1,11 +1,9 @@
-# Generate ECDH private and public key pair
 import hashlib
 import hmac
 import json
 import os
-# Use SHA256 as the hash function used in DSA
 from hashlib import sha256 as HASH_FUNC
-from typing import Tuple
+from typing import Tuple, Any
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes
@@ -13,19 +11,18 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey, EllipticCurvePublicKey
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from ecdsa import util, VerifyingKey, SigningKey, ECDH  # pip install ecdsa
-from ecdsa.curves import Curve, NIST256p as CURVE
-from ecdsa.ellipticcurve import Point, PointJacobi
+from ecdsa import util, VerifyingKey, SigningKey, ECDH
+from ecdsa.curves import NIST256p as CURVE
+from ecdsa.ellipticcurve import Point
 
 from project.message import Message
 
-
-# Use the curve P256, also known as SECP256R1, see https://neuromancer.sk/std/nist/P-256
 
 def generate_signature_key_pair() -> Tuple[SigningKey, VerifyingKey]:
     sk = SigningKey.generate(CURVE)
     vk = sk.get_verifying_key()
     return sk, vk
+
 
 def power_sk_vk(power: SigningKey, base: VerifyingKey):
     ecdh = ECDH(CURVE)
@@ -33,13 +30,13 @@ def power_sk_vk(power: SigningKey, base: VerifyingKey):
     ecdh.load_received_public_key(base)
     return ecdh.generate_sharedsecret_bytes()
 
+
 def generate_ecdh_key_pair(group):
     private_key = ec.generate_private_key(group)
     public_key = private_key.public_key()
     return private_key, public_key
 
 
-# Compute the shared secret using ECDH
 def compute_ecdh_shared_secret(private_key, peer_public_key):
     shared_secret = private_key.exchange(ec.ECDH(), peer_public_key)
     return shared_secret
@@ -111,101 +108,66 @@ def ecdsa_verify(signature, message, public_key):
         return False
 
 
-def encode_message(message: dict[str, SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | Point | Message | list[VerifyingKey] | str | bytes | dict | int | bool | None]) -> bytes:
-    dictionary = {}
-    if message:
-        for key, value in message.items():
-            print(type(value))
-            if value is None:
-                dictionary[key + "||NONE"] = "NONE".encode().hex()
-            elif isinstance(value, list) and all(isinstance(item, VerifyingKey) for item in value):
-                dictionary[key + "||LIST_VK"] = ";".join(item.to_pem().hex() for item in value)
-            elif isinstance(value, list) and all(isinstance(item, SigningKey) for item in value):
-                dictionary[key + "||LIST_SK"] = ";".join(item.to_pem().hex() for item in value)
-            elif isinstance(value, str):
-                dictionary[key + "||STR"] = value.encode().hex()
-            elif isinstance(value, bool):
-                dictionary[key + "||BOOL"] = value
-            elif isinstance(value, SigningKey):
-                dictionary[key + "||SK"] = value.to_pem().hex()
-            elif isinstance(value, VerifyingKey):
-                dictionary[key + "||VK"] = value.to_pem().hex()
-            elif isinstance(value, EllipticCurvePrivateKey):
-                dictionary[key + "||ECSK"] = value.private_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PrivateFormat.PKCS8,
-                    encryption_algorithm=serialization.NoEncryption()
-                ).hex()
-            elif isinstance(value, EllipticCurvePublicKey):
-                dictionary[key + "||ECPK"] = value.public_bytes(
-                    encoding=serialization.Encoding.PEM,
-                    format=serialization.PublicFormat.SubjectPublicKeyInfo
-                ).hex()
-            elif isinstance(value, Curve):
-                dictionary[key + "||CURVE"] = value.to_der().hex()
-            elif isinstance(value, Point) or isinstance(value, PointJacobi):
-                dictionary[key + "||POINT"] = value.to_bytes().hex()
-            elif isinstance(value, bytes):
-                dictionary[key + "||BYTE"] = value.hex()
-            elif isinstance(value, int):
-                dictionary[key + "||INT"] = value.to_bytes(32, byteorder="big").hex()
-            elif isinstance(value, dict):
-                dictionary[key + "||DICT"] = encode_message(value).hex()
-            elif isinstance(value, Message):
-                dictionary[key + "||MESSAGE"] = value.to_bytes().hex()
-            else:
-                raise ValueError(f"Unsupported type: {type(value)}")
-
-    return json.dumps(dictionary).encode()
+# Short type prefixes for efficiency
+TYPE_MAP = {
+    None: ("N", lambda value: "", lambda encoded: None),
+    str: ("S", lambda value: value, lambda encoded: encoded),
+    bool: ("B", lambda value: int(value), lambda encoded: bool(int(encoded))),
+    int: ("I", lambda value: value, lambda encoded: int(encoded)),
+    bytes: ("Y", lambda value: value.hex(), lambda encoded: bytes.fromhex(encoded)),
+    SigningKey: (
+    "SK", lambda value: value.to_pem().hex(), lambda encoded: SigningKey.from_pem(bytes.fromhex(encoded).decode())),
+    VerifyingKey: (
+    "VK", lambda value: value.to_pem().hex(), lambda encoded: VerifyingKey.from_pem(bytes.fromhex(encoded).decode())),
+    EllipticCurvePrivateKey: (
+        "ECSK",
+        lambda value: value.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        ).hex(),
+        lambda encoded: serialization.load_pem_private_key(bytes.fromhex(encoded), password=None)
+    ),
+    EllipticCurvePublicKey: (
+        "ECPK",
+        lambda value: value.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ).hex(),
+        lambda encoded: serialization.load_pem_public_key(bytes.fromhex(encoded))
+    ),
+    Point: ("P", lambda value: value.to_bytes().hex(), lambda encoded: Point.from_bytes(bytes.fromhex(encoded), CURVE)),
+    Message: ("M", lambda value: value.to_bytes().hex(), lambda encoded: Message.from_bytes(bytes.fromhex(encoded))),
+    dict: ("D", lambda value: encode_message(value).hex(), lambda encoded: decode_message(bytes.fromhex(encoded))),
+    list[str]: ("LS", lambda value: ";".join(value), lambda encoded: encoded.split(";")),
+    list: ("L", lambda value: ";".join(TYPE_MAP.get(type(item))[1](item) for item in value),
+           lambda encoded: [TYPE_MAP.get(type(item))[2](item) for item in encoded.split(";")])
+}
 
 
-def decode_message(encoded: bytes) -> dict[
-    str, SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | Point | str | bytes | dict | int | bool | None]:
+def encode_message(message: dict[str, Any]) -> bytes:
+    encoded = {}
+    for key, value in message.items():
+        value_type = type(value)
+        prefix, encode, _ = TYPE_MAP.get(value_type, ("U", lambda x: json.dumps(x), lambda x: json.loads(x)))
+
+        encoded[key] = f"{prefix}:{encode(value)}"
+
+    return json.dumps(encoded).encode()
+
+
+def decode_message(encoded: bytes) -> dict[str, Any]:
     decoded = json.loads(encoded.decode())
-    decoded_message = {}
-    for key, value in decoded.items():
-        key, type_ = key.split("||")
-        if type_ == "NONE":
-            decoded_message[key] = None
-        elif type_ == "LIST_VK":
-            decoded_message[key] = [VerifyingKey.from_pem(bytes.fromhex(item).decode()) for item in value.split(";")]
-        elif type_ == "LIST_SK":
-            decoded_message[key] = [SigningKey.from_pem(bytes.fromhex(item).decode()) for item in value.split(";")]
-        elif type_ == "STR":
-            decoded_message[key] = bytes.fromhex(value).decode()
-        elif type_ == "BOOL":
-            decoded_message[key] = value
-        elif type_ == "SK":
-            decoded_message[key] = SigningKey.from_pem(bytes.fromhex(value).decode())
-        elif type_ == "VK":
-            decoded_message[key] = VerifyingKey.from_pem(bytes.fromhex(value).decode())
-        elif type_ == "BYTE":
-            decoded_message[key] = bytes.fromhex(value)
-        elif type_ == "INT":
-            decoded_message[key] = int.from_bytes(bytes.fromhex(value), byteorder="big")
-        elif type_ == "DICT":
-            decoded_message[key] = decode_message(bytes.fromhex(value))
-        elif type_ == "ECSK":
-            decoded_message[key] = serialization.load_pem_private_key(
-                bytes.fromhex(value),
-                password=None,
-                backend=default_backend()
-            )
-        elif type_ == "ECPK":
-            decoded_message[key] = serialization.load_pem_public_key(
-                bytes.fromhex(value),
-                backend=default_backend()
-            )
-        elif type_ == "CURVE":
-            decoded_message[key] = Curve.from_der(bytes.fromhex(value))
-        elif type_ == "POINT":
-            decoded_message[key] = Point.from_bytes(CURVE, bytes.fromhex(value))
-        elif type_ == "MESSAGE":
-            decoded_message[key] = Message.from_bytes(bytes.fromhex(value))
-        else:
-            raise ValueError(f"Unsupported type: {type_}")
+    message = {}
 
-    return decoded_message
+    for key, prefixed_value in decoded.items():
+        prefix, value = prefixed_value.split(":", 1)
+        value_type = [t for t, (p, _, _) in TYPE_MAP.items() if p == prefix][0]
+        _, _, decode = TYPE_MAP.get(value_type, ("U", lambda x: json.dumps(x), lambda x: json.loads(x)))
+
+        message[key] = decode(value)
+
+    return message
 
 
 def aes_gcm_encrypt(key, plaintext, associated_data):
@@ -233,14 +195,17 @@ def aes_gcm_decrypt(key, iv, ciphertext, associated_data, tag):
 
     return plaintext
 
+
 def sha256(content: bytes) -> bytes:
     return hashlib.sha256(content).digest()
 
-def power(exponent: SigningKey, base: VerifyingKey, curve = ec.SECP256R1()):
+
+def power(exponent: SigningKey, base: VerifyingKey, curve=ec.SECP256R1()):
     ecdh = ECDH(curve)
     ecdh.load_private_key(exponent)
     ecdh.load_received_public_key(base)
     return ecdh.generate_sharedsecret_bytes()
+
 
 def HMAC(key: bytes, content: bytes) -> bytes:
     return hmac.new(key, content, hashlib.sha256).digest()

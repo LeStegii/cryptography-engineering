@@ -19,11 +19,12 @@ SUCCESS = "success"
 
 
 class Message:
-    def __init__(self, message: str | bytes, sender: str, receiver: str, type: str = MESSAGE):
+    def __init__(self, message: bytes, sender: str, receiver: str, type: str = MESSAGE):
         self.content = message
         self.sender = sender
         self.receiver = receiver
         self.type = type
+        self.content_dict = None
 
     def __str__(self):
         return f"{self.sender} -> {self.receiver}: {self.content} ({self.type})"
@@ -40,7 +41,9 @@ class Message:
         })
 
     def dict(self) -> dict[str, any]:
-        return utils.decode_message(self.content)
+        if not self.content_dict:
+            self.content_dict = utils.decode_message(self.content)
+        return self.content_dict
 
     @staticmethod
     def from_bytes(data: bytes) -> Optional["Message"]:

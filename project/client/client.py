@@ -81,7 +81,6 @@ class Client:
 
                     elif type == ANSWER_SALT:
                         salt = content.get("salt")
-                        print(f"Received salt from server.")
                         self.database.insert(self.username, {"salt": salt})
                         password = input("Received salt for login. Please enter your password: ")
                         if not self.login(password):

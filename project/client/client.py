@@ -4,6 +4,7 @@ import threading
 import time
 import traceback
 from typing import Optional
+import select
 
 import utils
 from project.database import Database
@@ -32,6 +33,9 @@ class Client:
             ANSWER_SALT: self.handle_answer_salt,
             MESSAGE: self.handle_message
         }
+
+        # Add event to signal when to stop threads
+        self.stop_event = threading.Event()
 
     # CONNECTION METHODS
 
@@ -62,20 +66,23 @@ class Client:
 
     def receive_message(self):
         try:
-            while True:
-                message_bytes = self.client_socket.recv(4096)
-                if not message_bytes:
-                    debug("Connection closed.")
-                    break
-                message = Message.from_bytes(message_bytes)
-                if is_valid_message(message):
-                    type = message.type
-                    handler = self.handlers.get(type, self.handle_unknown)
-                    if not handler(message):
+            while not self.stop_event.is_set():  # Check if stop event is triggered
+                # Use select to check if data is available to read on the socket
+                readable, _, _ = select.select([self.client_socket], [], [], 1.0)  # 1 second timeout
+                if readable:
+                    message_bytes = self.client_socket.recv(4096)
+                    if not message_bytes:
+                        debug("Connection closed.")
                         break
-                else:
-                    debug("Connection closed by server.")
-                    break
+                    message = Message.from_bytes(message_bytes)
+                    if is_valid_message(message):
+                        type = message.type
+                        handler = self.handlers.get(type, self.handle_unknown)
+                        if not handler(message):
+                            break
+                    else:
+                        debug("Connection closed by server.")
+                        break
         except (ConnectionResetError, OSError):
             debug("Connection closed.")
         except Exception:
@@ -94,8 +101,8 @@ class Client:
                 msg = input()
                 if msg.lower() == "exit":
                     debug("Closing connection.")
+                    self.stop_event.set()  # Signal the receive thread to stop
                     self.client_socket.close()
-
                     break
 
                 split = msg.split(" ", 1)
@@ -144,7 +151,7 @@ class Client:
     def handle_status(self, message: Message) -> bool:
         content = message.dict()
         if content.get("status") == ERROR:
-            debug(f"Received error from server: {content.get("error")}")
+            debug(f"Received error from server: {content.get('error')}")
             return False
         elif content.get("status") == "NOT_REGISTERED":
             debug("User not registered.")
@@ -154,7 +161,7 @@ class Client:
             debug("User registered. Requesting salt from server...")
             self.send("server", {}, REQUEST_SALT)
         else:
-            debug(f"Received unknown status from server: {content.get("status")}")
+            debug(f"Received unknown status from server: {content.get('status')}")
             return False
         return True
 

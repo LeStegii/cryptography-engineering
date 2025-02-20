@@ -27,7 +27,8 @@ class Server:
         self.handlers: dict[str, any] = {
             REGISTER: self.handle_register,
             LOGIN: self.handle_login,
-            REQUEST_SALT: self.handle_request_salt
+            REQUEST_SALT: self.handle_request_salt,
+            MESSAGE: self.handle_message
         }
 
     def username(self, addr: tuple[str, int]) -> Optional[str]:
@@ -84,7 +85,7 @@ class Server:
             target = recipient
 
         if target is None:
-            debug(f"Client {recipient} not found.")
+            debug(f"Client {recipient if not isinstance(recipient, SSLSocket) else recipient.getpeername()} not found.")
             return False
 
         try:
@@ -111,6 +112,9 @@ class Server:
     def is_registered(self, username: str) -> bool:
         return self.database.has(username) and self.database.get(username).get("registered") == True
 
+    def is_logged_in(self, username: str) -> bool:
+        return self.database.has(username) and self.database.get(username).get("logged_in") == True
+
     def handle_client(self, client_socket: ssl.SSLSocket, addr: tuple[str, int]):
         try:
 
@@ -131,8 +135,7 @@ class Server:
                     if message.type:
 
                         if message.receiver != "server" and type != MESSAGE:
-                            debug(
-                                f"{message.sender} ({addr}) tried to send a non-message type message to {message.receiver}.")
+                            debug(f"{message.sender} ({addr}) tried to send a non-message type message to {message.receiver}.")
                             continue
 
                         handler = self.handlers.get(type, self.handle_unknown)
@@ -147,7 +150,10 @@ class Server:
             debug(f"Error with client {addr}: {e}")
         finally:
             client_socket.close()
-            self.connections.pop(self.username(addr), None)
+            username = self.username(addr)
+            if username:
+                self.database.update(username, {"logged_in": False})
+                self.connections.pop(username, None)
             self.sockets.pop(addr, None)
             debug(f"Connection with {addr} closed.")
 
@@ -198,6 +204,20 @@ class Server:
         debug(
             f"{message.sender} ({addr}) sent message of unknown type '{message.type}'. Closing connection to be safe.")
         client.close()
+
+    def handle_message(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
+        if not self.is_logged_in(message.sender):
+            debug(f"{message.sender} ({addr}) tried to send a message without being logged in.")
+            self.send(message.sender, {"status": ERROR, "error": "You must be logged in to send messages."}, MESSAGE)
+            return
+
+        if not self.is_registered(message.receiver):
+            debug(f"{message.sender} ({addr}) tried to send a message to an unregistered user ({message.receiver}).")
+            self.send(message.sender, {"status": ERROR, "error": f"{message.receiver} is not registered."}, MESSAGE)
+            return
+
+        debug(f"{message.sender} ({addr}) sent a message to {message.receiver}.")
+        self.send_bytes(message.to_bytes(), message.receiver) # Forward the message to the recipient
 
     def get_or_gen_salt(self, sender: str) -> bytes:
         """

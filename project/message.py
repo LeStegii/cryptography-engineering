@@ -10,6 +10,9 @@ EXIT = "exit"
 STATUS = "status_request"
 IDENTITY = "identity"
 
+NOT_REGISTERED = "not_registered"
+REGISTERED = "registered"
+
 REQUEST_SALT = "request_salt"
 ANSWER_SALT = "answer_salt"
 SEND_PASSWORD = "send_password"

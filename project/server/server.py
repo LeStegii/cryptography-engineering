@@ -10,7 +10,7 @@ import utils
 from project.client.client import enable_debug
 from project.database import Database
 from project.message import MESSAGE, Message, STATUS, REGISTER, REQUEST_SALT, ANSWER_SALT, IDENTITY, LOGIN, ERROR, \
-    SUCCESS
+    SUCCESS, REGISTERED, NOT_REGISTERED
 from project.project_utils import is_valid_message, debug, check_username
 
 
@@ -123,7 +123,7 @@ class Server:
                 return
 
             while True:
-                received_bytes = client_socket.recv(4096)
+                received_bytes = client_socket.recv(8192)
                 if not received_bytes:
                     debug(f"Received empty message from {addr}. Closing connection.")
                     break
@@ -161,7 +161,7 @@ class Server:
         content = message.dict()
         if not self.is_registered(message.sender):
             debug(f"{message.sender}'s ({addr}) tried to login but isn't registered.")
-            self.send(message.sender, {"status": "NOT_REGISTERED"}, LOGIN)
+            self.send(message.sender, {"status": NOT_REGISTERED}, LOGIN)
         else:
             debug(f"{message.sender} ({addr}) sent login request, checking password...")
             salted_password = content.get("salted_password")
@@ -192,8 +192,15 @@ class Server:
 
         debug(f"Saving password for {message.sender} ({addr}). Sending salt to client.")
         password = content.get("password")
+        key_bundle = content.get("keys")
+
+        if not password or not key_bundle or not isinstance(key_bundle, dict) or not isinstance(password, str):
+            debug(f"{message.sender} ({addr}) sent invalid registration data.")
+            self.send(message.sender, {"status": ERROR, "error": "Invalid registration data."}, REGISTER)
+            return
+
         salted_password = utils.salt_password(password, self.database.get(message.sender).get("salt"))
-        self.database.update(message.sender, {"salted_password": salted_password, "registered": True})
+        self.database.update(message.sender, {"salted_password": salted_password, "keys": key_bundle, "registered": True})
         self.send(message.sender, {"status": SUCCESS, "salt": salt}, REGISTER)
 
     def handle_request_salt(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
@@ -277,12 +284,12 @@ class Server:
         self.connections[message.sender] = addr
         self.sockets[addr] = client_socket
 
-        if not self.database.has(message.sender):
+        if not self.is_registered(username):
             debug(f"{message.sender} ({addr}) sent a status request, User is currently not registered.")
-            self.send(message.sender, {"status": "NOT_REGISTERED"}, STATUS)
+            self.send(message.sender, {"status": NOT_REGISTERED}, STATUS)
         else:
-            debug(f"{message.sender} ({addr}) sent a status request, answering with 'REGISTERED'.")
-            self.send(message.sender, {"status": "REGISTERED"}, STATUS)
+            debug(f"{message.sender} ({addr}) sent a status request, User is registered.")
+            self.send(message.sender, {"status": REGISTERED}, STATUS)
         return True
 
 

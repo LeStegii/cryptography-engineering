@@ -66,7 +66,7 @@ class Database:
         if not isinstance(key, (str, bytes)):
             raise TypeError("Key must be a string or bytes")
 
-        if isinstance(value, dict):
+        if isinstance(value, dict) and key in self.data:
             self.data[key if isinstance(key, str) else key.decode()].update(value)
         else:
             self.data[key if isinstance(key, str) else key.decode()] = value

@@ -6,10 +6,13 @@ import traceback
 from typing import Optional
 import select
 
+from ecdsa import SigningKey, VerifyingKey
+
 import utils
+from project import project_utils
 from project.database import Database
 from project.message import Message, MESSAGE, REGISTER, LOGIN, IDENTITY, ANSWER_SALT, REQUEST_SALT, ERROR, \
-    SUCCESS, STATUS
+    SUCCESS, STATUS, NOT_REGISTERED, REGISTERED
 from project.project_utils import is_valid_message, debug
 
 enable_debug = True
@@ -113,7 +116,7 @@ class Client:
                     else:
                         self.send(receiver, {"message": msg})
                 else:
-                    debug("Invalid message format. Please enter in the format 'receiver message'.")
+                    debug("Invalid message format. Please enter in the format '<receiver> <message>'.")
 
         except Exception:
             traceback.print_exc()
@@ -153,11 +156,20 @@ class Client:
         if content.get("status") == ERROR:
             debug(f"Received error from server: {content.get('error')}")
             return False
-        elif content.get("status") == "NOT_REGISTERED":
+        elif content.get("status") == NOT_REGISTERED:
             debug("User not registered.")
             password = input("Enter your new password: ")
-            self.send("server", {"password": password}, REGISTER)
-        elif content.get("status") == "REGISTERED":
+            debug("Computing keys...")
+            keys = self.load_or_gen_keys()
+            key_bundle = {
+                "IPK": keys["IPK"],
+                "SPK": keys["SPK"],
+                "OPKs": keys["OPKs"],
+                "sigma": utils.ecdsa_sign(keys["SPK"].to_string(), keys["ik"])
+            }
+            debug("Sending registration request to server...")
+            self.send("server", {"password": password, "keys": key_bundle}, REGISTER)
+        elif content.get("status") == REGISTERED:
             debug("User registered. Requesting salt from server...")
             self.send("server", {}, REQUEST_SALT)
         else:
@@ -222,6 +234,12 @@ class Client:
         debug(f"{message.sender} sent message of unknown type '{message.type}'. Closing connection to be safe.")
         return False
 
+    def load_or_gen_keys(self) -> dict[str, SigningKey, VerifyingKey]:
+        keys = self.database.get("keys")
+        if not keys:
+            keys = project_utils.generate_initial_x3dh_keys()
+            self.database.insert("keys", keys)
+        return keys
 
 if __name__ == "__main__":
     client = Client()

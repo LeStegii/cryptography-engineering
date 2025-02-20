@@ -5,6 +5,7 @@ import json
 import os
 # Use SHA256 as the hash function used in DSA
 from hashlib import sha256 as HASH_FUNC
+from typing import Tuple
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes
@@ -13,12 +14,24 @@ from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from ecdsa import util, VerifyingKey, SigningKey, ECDH  # pip install ecdsa
-from ecdsa.curves import Curve, NIST256p
+from ecdsa.curves import Curve, NIST256p as CURVE
 from ecdsa.ellipticcurve import Point, PointJacobi
+
+from project.message import Message
 
 
 # Use the curve P256, also known as SECP256R1, see https://neuromancer.sk/std/nist/P-256
 
+def generate_signature_key_pair() -> Tuple[SigningKey, VerifyingKey]:
+    sk = SigningKey.generate(CURVE)
+    vk = sk.get_verifying_key()
+    return sk, vk
+
+def power_sk_vk(power: SigningKey, base: VerifyingKey):
+    ecdh = ECDH(CURVE)
+    ecdh.load_private_key(power)
+    ecdh.load_received_public_key(base)
+    return ecdh.generate_sharedsecret_bytes()
 
 def generate_ecdh_key_pair(group):
     private_key = ec.generate_private_key(group)
@@ -98,12 +111,17 @@ def ecdsa_verify(signature, message, public_key):
         return False
 
 
-def encode_message(message: dict[str, str | SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | Point | bytes | dict | int | None | bool]) -> bytes:
+def encode_message(message: dict[str, SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | Point | Message | list[VerifyingKey] | str | bytes | dict | int | bool | None]) -> bytes:
     dictionary = {}
     if message:
         for key, value in message.items():
+            print(type(value))
             if value is None:
                 dictionary[key + "||NONE"] = "NONE".encode().hex()
+            elif isinstance(value, list) and all(isinstance(item, VerifyingKey) for item in value):
+                dictionary[key + "||LIST_VK"] = ";".join(item.to_pem().hex() for item in value)
+            elif isinstance(value, list) and all(isinstance(item, SigningKey) for item in value):
+                dictionary[key + "||LIST_SK"] = ";".join(item.to_pem().hex() for item in value)
             elif isinstance(value, str):
                 dictionary[key + "||STR"] = value.encode().hex()
             elif isinstance(value, bool):
@@ -133,6 +151,8 @@ def encode_message(message: dict[str, str | SigningKey | VerifyingKey | Elliptic
                 dictionary[key + "||INT"] = value.to_bytes(32, byteorder="big").hex()
             elif isinstance(value, dict):
                 dictionary[key + "||DICT"] = encode_message(value).hex()
+            elif isinstance(value, Message):
+                dictionary[key + "||MESSAGE"] = value.to_bytes().hex()
             else:
                 raise ValueError(f"Unsupported type: {type(value)}")
 
@@ -140,16 +160,18 @@ def encode_message(message: dict[str, str | SigningKey | VerifyingKey | Elliptic
 
 
 def decode_message(encoded: bytes) -> dict[
-    str, str | SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | Point | bytes | dict | int | bool | None]:
-
-
+    str, SigningKey | VerifyingKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | EllipticCurvePrivateKey | EllipticCurvePublicKey | Point | str | bytes | dict | int | bool | None]:
     decoded = json.loads(encoded.decode())
     decoded_message = {}
     for key, value in decoded.items():
         key, type_ = key.split("||")
         if type_ == "NONE":
             decoded_message[key] = None
-        if type_ == "STR":
+        elif type_ == "LIST_VK":
+            decoded_message[key] = [VerifyingKey.from_pem(bytes.fromhex(item).decode()) for item in value.split(";")]
+        elif type_ == "LIST_SK":
+            decoded_message[key] = [SigningKey.from_pem(bytes.fromhex(item).decode()) for item in value.split(";")]
+        elif type_ == "STR":
             decoded_message[key] = bytes.fromhex(value).decode()
         elif type_ == "BOOL":
             decoded_message[key] = value
@@ -177,7 +199,9 @@ def decode_message(encoded: bytes) -> dict[
         elif type_ == "CURVE":
             decoded_message[key] = Curve.from_der(bytes.fromhex(value))
         elif type_ == "POINT":
-            decoded_message[key] = Point.from_bytes(NIST256p.curve, bytes.fromhex(value))
+            decoded_message[key] = Point.from_bytes(CURVE, bytes.fromhex(value))
+        elif type_ == "MESSAGE":
+            decoded_message[key] = Message.from_bytes(bytes.fromhex(value))
         else:
             raise ValueError(f"Unsupported type: {type_}")
 

@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import os
+import zlib
 from hashlib import sha256 as HASH_FUNC
 from typing import Tuple, Any
 
@@ -109,6 +110,14 @@ def ecdsa_verify(signature, message, public_key):
         return False
 
 
+def compress(value: bytes) -> bytes:
+    """Compress a string using a compression algorithm."""
+    return zlib.compress(value)
+
+def decompress(value: bytes) -> bytes:
+    """Decompress a compressed string."""
+    return zlib.decompress(value)
+
 # Short type prefixes for efficiency
 TYPE_MAP = {
     None: ("N", lambda value: "", lambda encoded: None),
@@ -123,19 +132,19 @@ TYPE_MAP = {
     EllipticCurvePrivateKey: (
         "ECSK",
         lambda value: value.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.Raw,
             encryption_algorithm=serialization.NoEncryption()
         ).hex(),
-        lambda encoded: serialization.load_pem_private_key(bytes.fromhex(encoded), password=None)
+        lambda encoded: serialization.load_der_private_key(bytes.fromhex(encoded), password=None)
     ),
     EllipticCurvePublicKey: (
         "ECPK",
         lambda value: value.public_bytes(
-            encoding=serialization.Encoding.PEM,
+            encoding=serialization.Encoding.DER,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         ).hex(),
-        lambda encoded: serialization.load_pem_public_key(bytes.fromhex(encoded))
+        lambda encoded: serialization.load_der_public_key(bytes.fromhex(encoded))
     ),
     Point: ("P", lambda value: value.to_bytes().hex(), lambda encoded: Point.from_bytes(bytes.fromhex(encoded), CURVE)),
     Message: ("M", lambda value: value.to_bytes().hex(), lambda encoded: Message.from_bytes(bytes.fromhex(encoded))),
@@ -152,11 +161,11 @@ def encode_message(message: dict[str, Any]) -> bytes:
 
         encoded[key] = f"{prefix}:{encode(value)}"
 
-    return json.dumps(encoded).encode()
+    return compress(json.dumps(encoded).encode())
 
 
 def decode_message(encoded: bytes) -> dict[str, Any]:
-    decoded = json.loads(encoded.decode())
+    decoded = json.loads(decompress(encoded).decode())
     message = {}
 
     for key, prefixed_value in decoded.items():
@@ -240,3 +249,15 @@ def hkdf_expand(prk, info, length=32):
     )
     derived_key = hkdf_expand.derive(prk)
     return derived_key
+
+
+if __name__ == "__main__":
+    private_key, public_key = generate_signature_key_pair()
+    encoded = encode_message({"key": private_key, "key2": public_key})
+    print(len(encoded))
+    compressed = compress(encoded)
+    print(len(compressed))
+    uncompressed = decompress(compressed)
+    print(len(uncompressed))
+
+    print(encoded == uncompressed)

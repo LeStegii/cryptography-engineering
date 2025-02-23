@@ -21,8 +21,8 @@ SEND_PASSWORD = "send_password"
 ERROR = "error"
 SUCCESS = "success"
 
-X3DH_REQUEST = "x3dh_request"
-X3DH_REACTION = "x3dh_reaction"
+X3DH_BUNDLE_REQUEST = "x3dh_request"
+X3DH_FORWARD = "x3dh_reaction"
 
 
 class Message:

@@ -9,7 +9,7 @@ from typing import Optional
 import utils
 from project.database import Database
 from project.message import MESSAGE, Message, STATUS, REGISTER, REQUEST_SALT, ANSWER_SALT, IDENTITY, LOGIN, ERROR, \
-    SUCCESS, REGISTERED, NOT_REGISTERED, X3DH_REQUEST, X3DH_REACTION
+    SUCCESS, REGISTERED, NOT_REGISTERED, X3DH_BUNDLE_REQUEST, X3DH_FORWARD
 from project.project_utils import is_valid_message, debug, check_username
 
 
@@ -23,12 +23,17 @@ class Server:
 
         self.database = Database("db/database.csv", "db/server-key.txt")
 
+        # Set all users to logged out (in case the server crashed)
+        for user in self.database.keys():
+            self.database.update(user, {"logged_in": False})
+
         self.handlers: dict[str, any] = {
             REGISTER: self.handle_register,
             LOGIN: self.handle_login,
             REQUEST_SALT: self.handle_request_salt,
             MESSAGE: self.handle_message,
-            X3DH_REQUEST: self.handle_x3dh_request
+            X3DH_BUNDLE_REQUEST: self.handle_x3dh_bundle_request,
+            X3DH_FORWARD: self.handle_x3dh_forward
         }
 
     def username(self, addr: tuple[str, int]) -> Optional[str]:
@@ -225,26 +230,26 @@ class Server:
         debug(f"{message.sender} ({addr}) sent a message to {message.receiver}.")
         self.send_bytes(message.to_bytes(), message.receiver)  # Forward the message to the recipient
 
-    def handle_x3dh_request(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
+    def handle_x3dh_bundle_request(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
+        """Called when a client requests a key bundle."""
         target = message.dict().get("target")
         if not target or not check_username(target):
-            debug(f"{message.sender} ({addr}) sent an X3DH_REQUEST without a valid target.")
-            self.send(message.sender, {"status": ERROR, "error": "No valid target specified."}, X3DH_REACTION)
+            debug(f"{message.sender} ({addr}) sent a key request without a valid target.")
+            self.send(message.sender, {"status": ERROR, "error": "No valid target specified."}, X3DH_BUNDLE_REQUEST)
             return
 
         if not self.is_registered(target):
-            debug(f"{message.sender} ({addr}) sent an X3DH_REQUEST to an unregistered user ({target}).")
-            self.send(message.sender, {"status": ERROR, "error": f"{target} is not registered."}, X3DH_REACTION)
+            debug(f"{message.sender} ({addr}) sent a key request to an unregistered user ({target}).")
+            self.send(message.sender, {"status": ERROR, "error": f"{target} is not registered."}, X3DH_BUNDLE_REQUEST)
             return
 
         keys = self.database.get(target).get("keys")
         if not keys:
-            debug(
-                f"{message.sender} ({addr}) sent an X3DH_REQUEST to {target}, but the user has no keys (something went wrong here!).")
-            self.send(message.sender, {"status": ERROR, "error": f"Key request for {target} failed."}, X3DH_REACTION)
+            debug(f"{message.sender} ({addr}) sent a key request to {target}, but the user has no keys (something went wrong here!).")
+            self.send(message.sender, {"status": ERROR, "error": f"Key request for {target} failed."}, X3DH_BUNDLE_REQUEST)
             return
 
-        debug(f"{message.sender} ({addr}) sent an X3DH_REQUEST to {target}. Sending keys.")
+        debug(f"{message.sender} ({addr}) sent a key request for {target}. Sending keys.")
 
         if len(keys.get("OPKs")) == 0:
             debug(f"{target} has no one-time prekeys left. Requesting new ones.")
@@ -259,10 +264,32 @@ class Server:
                 "sigma": keys.get("sigma")
             }
 
-        except Exception:
-            print("Error")
+            self.send(message.sender, {"status": SUCCESS, "key_bundle": key_bundle, "owner": target}, X3DH_BUNDLE_REQUEST)
 
-        self.send(message.sender, {"status": SUCCESS, "key_bundle": key_bundle}, X3DH_REACTION)
+        except Exception:
+            traceback.print_exc()
+            debug(f"Failed to send keys to {message.sender}.")
+
+
+    def handle_x3dh_forward(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
+        """Called after the client received a key bundle and wants to react to it so the other user can be notified."""
+        target = message.dict().get("target")
+        sender = message.sender
+        if not target or not check_username(target):
+            debug(f"{message.sender} ({addr}) wants to forward an x3dh message without a valid target.")
+            self.send(message.sender, {"status": ERROR, "error": "No valid target specified."}, X3DH_FORWARD)
+            return
+
+        if not self.is_registered(target):
+            debug(f"{message.sender} ({addr}) wants to forward an x3dh message to an unregistered user ({target}).")
+            self.send(message.sender, {"status": ERROR, "error": f"{target} is not registered."}, X3DH_FORWARD)
+            return
+
+        message.dict()["sender"] = sender
+
+        debug(f"{message.sender} ({addr}) forwarded an x3dh message to {target}.")
+        self.send(target, message.dict(), X3DH_FORWARD)
+
 
     def get_or_gen_salt(self, sender: str) -> bytes:
         """

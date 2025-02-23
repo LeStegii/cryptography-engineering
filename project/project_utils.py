@@ -38,6 +38,7 @@ def generate_initial_x3dh_keys():
         "IPK": IPK,
         "sk": sk,
         "SPK": SPK,
+        "sigma": utils.ecdsa_sign(SPK.to_pem(), ik),
         "oks": [ok for ok, _ in one_time_prekeys],
         "OPKs": [OPK for _, OPK in one_time_prekeys]
     }

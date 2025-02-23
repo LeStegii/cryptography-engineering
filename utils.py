@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey, EllipticCurvePublicKey
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from ecdsa import util, VerifyingKey, SigningKey, ECDH
 from ecdsa.curves import NIST256p as CURVE
@@ -112,8 +113,8 @@ def ecdsa_verify(signature, message, public_key):
 TYPE_MAP = {
     None: ("N", lambda value: "", lambda encoded: None),
     str: ("S", lambda value: value, lambda encoded: encoded),
-    bool: ("B", lambda value: int(value), lambda encoded: bool(int(encoded))),
-    int: ("I", lambda value: value, lambda encoded: int(encoded)),
+    bool: ("B", lambda value: str(int(value)), lambda encoded: bool(int(encoded))),
+    int: ("I", lambda value: str(value), lambda encoded: int(encoded)),
     bytes: ("Y", lambda value: value.hex(), lambda encoded: bytes.fromhex(encoded)),
     SigningKey: (
     "SK", lambda value: value.to_pem().hex(), lambda encoded: SigningKey.from_pem(bytes.fromhex(encoded).decode())),
@@ -139,9 +140,7 @@ TYPE_MAP = {
     Point: ("P", lambda value: value.to_bytes().hex(), lambda encoded: Point.from_bytes(bytes.fromhex(encoded), CURVE)),
     Message: ("M", lambda value: value.to_bytes().hex(), lambda encoded: Message.from_bytes(bytes.fromhex(encoded))),
     dict: ("D", lambda value: encode_message(value).hex(), lambda encoded: decode_message(bytes.fromhex(encoded))),
-    list[str]: ("LS", lambda value: ";".join(value), lambda encoded: encoded.split(";")),
-    list: ("L", lambda value: ";".join(TYPE_MAP.get(type(item))[1](item) for item in value),
-           lambda encoded: [TYPE_MAP.get(type(item))[2](item) for item in encoded.split(";")])
+    list: ("L", lambda value: ";".join(TYPE_MAP.get(type(item))[0] + ":" + TYPE_MAP.get(type(item))[1](item) for item in value), lambda encoded: [TYPE_MAP.get(type_for_prefix(item.split(":")[0]))[2](item.split(":")[1]) for item in encoded.split(";")])
 }
 
 
@@ -162,13 +161,15 @@ def decode_message(encoded: bytes) -> dict[str, Any]:
 
     for key, prefixed_value in decoded.items():
         prefix, value = prefixed_value.split(":", 1)
-        value_type = [t for t, (p, _, _) in TYPE_MAP.items() if p == prefix][0]
+        value_type = type_for_prefix(prefix)
         _, _, decode = TYPE_MAP.get(value_type, ("U", lambda x: json.dumps(x), lambda x: json.loads(x)))
 
         message[key] = decode(value)
 
     return message
 
+def type_for_prefix(prefix):
+    return [t for t, (p, _, _) in TYPE_MAP.items() if p == prefix][0]
 
 def aes_gcm_encrypt(key, plaintext, associated_data):
     iv = os.urandom(12)
@@ -218,7 +219,7 @@ def salt_password(password: str | bytes, salt: bytes) -> bytes:
 def hkdf_extract(salt, input_key_material, length=32):
     # Extract: Derive the PRK (pseudorandom key)
     hkdf_extract = HKDF(
-        algorithm=HASH_FUNC,
+        algorithm=SHA256(),
         length=length,             # Length of the PRK (match SHA-256 output: 32 bytes)
         salt=salt,             # Salt can be any value or None
         info=None,             # No info for Extract phase
@@ -231,7 +232,7 @@ def hkdf_extract(salt, input_key_material, length=32):
 def hkdf_expand(prk, info, length=32):
     # Expand: Derive the final key from the PRK
     hkdf_expand = HKDF(
-        algorithm=HASH_FUNC,
+        algorithm=SHA256(),
         length=length,         # Desired output length of the final derived key
         salt=None,             # No salt in the Expand phase (PRK is used directly as key)
         info=info,             # Context-specific info parameter

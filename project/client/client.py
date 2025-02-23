@@ -1,10 +1,10 @@
+import select
 import socket
 import ssl
 import threading
 import time
 import traceback
 from typing import Optional
-import select
 
 from ecdsa import SigningKey, VerifyingKey
 
@@ -13,7 +13,7 @@ from project import project_utils
 from project.client import x3dh
 from project.database import Database
 from project.message import Message, MESSAGE, REGISTER, LOGIN, IDENTITY, ANSWER_SALT, REQUEST_SALT, ERROR, \
-    SUCCESS, STATUS, NOT_REGISTERED, REGISTERED, X3DH_REQUEST, X3DH_REACTION
+    SUCCESS, STATUS, NOT_REGISTERED, REGISTERED, X3DH_BUNDLE_REQUEST, X3DH_FORWARD
 from project.project_utils import is_valid_message, debug
 
 enable_debug = True
@@ -36,8 +36,8 @@ class Client:
             LOGIN: self.handle_login,
             ANSWER_SALT: self.handle_answer_salt,
             MESSAGE: self.handle_message,
-            X3DH_REQUEST: self.handle_x3dh_answer,
-            X3DH_REACTION: self.handle_x3dh_reaction
+            X3DH_BUNDLE_REQUEST: self.handle_x3dh_bundle_answer,
+            X3DH_FORWARD: self.handle_x3dh_forward
         }
 
         # Add event to signal when to stop threads
@@ -111,18 +111,29 @@ class Client:
                     self.client_socket.close()
                     break
 
-                split = msg.split(" ", 1)
-                if len(split) == 2 and split[0].strip() and split[1].strip():
-                    receiver, msg = split
+                split = msg.split(" ")
+                if len(split) >= 2 and split[0].strip() and split[1].strip():
+                    type = split[0]
+                    receiver = split[1]
                     if receiver == self.username:
                         debug("You cannot send messages to yourself.")
-                    else:
-                        if not self.database.get(receiver):
-                            debug(f"{receiver} is not in the database, requesting their key bundle...")
-                            self.send("server", {"target": receiver}, X3DH_REQUEST)
-                            print("Waiting for response...")
+                        continue
+
+                    if type == "x3dh":
+                        debug(f"Requesting key bundle for {receiver}...")
+                        self.send("server", {"target": receiver}, X3DH_BUNDLE_REQUEST)
+
+                    elif type == "msg" or type == "message" or type == "send" and len(split) > 3:
+                        text = " ".join(split[2:])
+                        if not text or len(text.strip()) == 0:
+                            debug("Empty messages aren't allowed.")
+                            continue
+                        if not self.database.get(receiver) or not self.database.get(receiver).get("shared_secret"):
+                            debug(f"{receiver} is not in the database, request their key bundle first!")
+                        else:
+                            debug(f"Sending message {text}...") # TODO
                 else:
-                    debug("Invalid message format. Please enter in the format '<receiver> <message>'.")
+                    debug("Invalid message format. Please enter in the format '<type> <receiver> [<message>]'.")
 
         except Exception:
             traceback.print_exc()
@@ -171,7 +182,7 @@ class Client:
                 "IPK": keys["IPK"],
                 "SPK": keys["SPK"],
                 "OPKs": keys["OPKs"],
-                "sigma": utils.ecdsa_sign(keys["SPK"].to_pem(), keys["ik"])
+                "sigma": keys["sigma"]
             }
             debug("Sending registration request to server...")
             self.send("server", {"password": password, "keys": key_bundle}, REGISTER)
@@ -236,50 +247,81 @@ class Client:
             debug(f"{message.sender}: {content}")
         return True
 
-    def handle_x3dh_answer(self, message: Message) -> bool:
+    def handle_x3dh_bundle_answer(self, message: Message) -> bool:
+        """
+        Called after receiving a key bundle from the server.
+        The key bundle is received after requesting it from the server.
+        """
         content = message.dict()
         key_bundle_b = content.get("key_bundle")
         if not key_bundle_b:
-            debug(f"Received invalid key bundle for {content.get("target")} from server.")
+            debug(f"Received invalid key bundle for {content.get("owner")} from server.")
             return True
 
         keys = self.load_or_gen_keys()
-        sigma_B = key_bundle_b.get("sigma")
-        IPK_B = key_bundle_b.get("IPK")
-        SPK_B = key_bundle_b.get("SPK")
-        OPK_B = key_bundle_b.get("OPK")
+        ik_A: SigningKey = keys["ik"]
+        IPK_A: VerifyingKey = keys["IPK"]
+        OPK_A: VerifyingKey = keys["OPKs"][0]
+
+        sigma_B: bytes = key_bundle_b.get("sigma")
+        IPK_B: VerifyingKey = key_bundle_b.get("IPK")
+        SPK_B: VerifyingKey = key_bundle_b.get("SPK")
+        OPK_B: VerifyingKey = key_bundle_b.get("OPK")
 
         if not utils.ecdsa_verify(sigma_B, SPK_B.to_pem(), IPK_B):
             debug("Invalid signature for SPK_B. Aborting X3DH.")
         else:
             debug("Computing shared secret...")
-            shared_secret = x3dh.x3dh_key(keys["ik"], keys["sk"], IPK_B, SPK_B, OPK_B)
-            self.database.insert(content.get("target"), {"shared_secret": shared_secret})
-            debug(f"Shared secret computed and saved for {content.get('target')}: {shared_secret.hex()}")
+            ek_A, EPK_A = utils.generate_signature_key_pair()
+            shared_secret = x3dh.x3dh_key(ik_A, ek_A, IPK_B, SPK_B, OPK_B)
+            self.database.insert(content.get("owner"), {"shared_secret": shared_secret})
+            debug("Sending reaction to server...")
+            debug(f"Shared secret computed and saved for {content.get('owner')}: {shared_secret.hex()}")
+            iv, cipher, tag = utils.aes_gcm_encrypt(shared_secret, self.username.encode(), IPK_A.to_pem() + IPK_B.to_pem())
+            self.send("server", {
+                "target": content.get("owner"),
+                "IPK": IPK_A,
+                "EPK": EPK_A,
+                "OPK": OPK_A,
+                "iv": iv,
+                "cipher": cipher,
+                "tag": tag
+            }, X3DH_FORWARD)
 
         return True
 
-    def handle_x3dh_reaction(self, message: Message) -> bool:
+    def handle_x3dh_forward(self, message: Message) -> bool:
         content = message.dict()
-        key_bundle_a = content.get("key_bundle")
-        if not key_bundle_a:
-            debug(f"Received invalid key bundle for {content.get('target')} from server.")
-            return True
+        debug(f"Received a forwarded x3dh message for {content.get('target')} from server.")
 
         keys = self.load_or_gen_keys()
-        sigma_A = key_bundle_a.get("sigma")
-        IPK_A = key_bundle_a.get("IPK")
-        SPK_A = key_bundle_a.get("SPK")
-        OPK_A = key_bundle_a.get("OPK")
+        ik_B: SigningKey = keys["ik"]
+        sk_B: SigningKey = keys["sk"]
+        ok_B: SigningKey = keys["oks"][0]
+        IPK_B: VerifyingKey = keys["IPK"]
+        IPK_A: VerifyingKey = content.get("IPK")
+        EPK_A: VerifyingKey = content.get("EPK")
+        OPK_A: VerifyingKey = content.get("OPK")
+        iv: bytes = content.get("iv")
+        cipher: bytes = content.get("cipher")
+        tag: bytes = content.get("tag")
+        sender: str = content.get("sender")
 
-        if not utils.ecdsa_verify(sigma_A, SPK_A.to_pem(), IPK_A):
-            debug("Invalid signature for SPK_A. Aborting X3DH.")
-        else:
-            debug("Computing shared secret...")
-            shared_secret = x3dh.x3dh_key_reaction(IPK_A, SPK_A, keys["ik"], keys["sk"], keys["oks"][0])
-            self.database.insert(content.get("target"), {"shared_secret": shared_secret})
-            debug(f"Shared secret computed and saved for {content.get('target')}: {shared_secret.hex()}")
-        return True
+        shared_secret = x3dh.x3dh_key_reaction(IPK_A, EPK_A, ik_B, sk_B, ok_B)
+        try:
+            decrypted = utils.aes_gcm_decrypt(shared_secret, iv, cipher, IPK_A.to_pem() + IPK_B.to_pem(), tag)
+            if decrypted == sender.encode():
+                debug(f"Succesfully computed shared secret with {sender}: {shared_secret.hex()}")
+                self.database.update(sender, {"shared_secret": shared_secret})
+            else:
+                debug(f"Failed to decrypt message from {sender}. Generating shared secret failed.")
+
+            return True
+        except Exception as e:
+            traceback.print_exc()
+            debug(f"Failed to decrypt message from {sender}. Generating shared secret failed.")
+
+        return False
 
     def handle_unknown(self, message: Message):
         debug(f"{message.sender} sent message of unknown type '{message.type}'. Closing connection to be safe.")
@@ -291,6 +333,7 @@ class Client:
             keys = project_utils.generate_initial_x3dh_keys()
             self.database.insert("keys", keys)
         return keys
+
 
 if __name__ == "__main__":
     client = Client()

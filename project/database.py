@@ -94,3 +94,6 @@ class Database:
         if not isinstance(key, (str, bytes)):
             raise TypeError("Key must be a string or bytes")
         return (key if isinstance(key, str) else key.decode()) in self.data
+
+    def keys(self):
+        return self.data.keys()

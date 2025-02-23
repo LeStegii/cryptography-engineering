@@ -154,6 +154,10 @@ TYPE_MAP = {
 
 
 def encode_message(message: dict[str, Any]) -> bytes:
+    return compress(json.dumps(encode_dict(message)).encode())
+
+
+def encode_dict(message: dict[str, Any]) -> dict[str, str]:
     encoded = {}
     for key, value in message.items():
         value_type = type(value)
@@ -161,21 +165,21 @@ def encode_message(message: dict[str, Any]) -> bytes:
 
         encoded[key] = f"{prefix}:{encode(value)}"
 
-    return compress(json.dumps(encoded).encode())
-
+    return encoded
 
 def decode_message(encoded: bytes) -> dict[str, Any]:
-    decoded = json.loads(decompress(encoded).decode())
-    message = {}
+    return decode_dict(json.loads(decompress(encoded).decode()))
 
-    for key, prefixed_value in decoded.items():
+def decode_dict(encoded: dict[str, str]) -> dict[str, Any]:
+    decoded = {}
+    for key, prefixed_value in encoded.items():
         prefix, value = prefixed_value.split(":", 1)
         value_type = type_for_prefix(prefix)
         _, _, decode = TYPE_MAP.get(value_type, ("U", lambda x: json.dumps(x), lambda x: json.loads(x)))
 
-        message[key] = decode(value)
+        decoded[key] = decode(value)
 
-    return message
+    return decoded
 
 def type_for_prefix(prefix):
     return [t for t, (p, _, _) in TYPE_MAP.items() if p == prefix][0]

@@ -1,4 +1,5 @@
 import csv
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -29,8 +30,9 @@ def encode_database(content: bytes, key: bytes) -> tuple[bytes, bytes, bytes]:
 
 
 class Database:
-    def __init__(self, path: str, key_path: str):
-        self.key: bytes = load_or_create_key(key_path)
+    def __init__(self, path: str, key_path: str, cipher: bool = False):
+        self.cipher = cipher
+        self.key: bytes = load_or_create_key(key_path) if cipher else b""
         self.path: str = path
         self.data = self.load(path)
 
@@ -41,14 +43,17 @@ class Database:
 
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "r") as file:
-            reader = csv.reader(file)
-            cipher: list[str] = reader.__next__()
-            iv: bytes = bytes.fromhex(cipher[0])
-            cipher_text: bytes = bytes.fromhex(cipher[1])
-            tag: bytes = bytes.fromhex(cipher[2])
+            if self.cipher:
+                reader = csv.reader(file)
+                cipher: list[str] = reader.__next__()
+                iv: bytes = bytes.fromhex(cipher[0])
+                cipher_text: bytes = bytes.fromhex(cipher[1])
+                tag: bytes = bytes.fromhex(cipher[2])
 
-            decrypted = decode_database(cipher_text, self.key, iv, tag)
-            return utils.decode_message(decrypted)
+                decrypted = decode_database(cipher_text, self.key, iv, tag)
+                return utils.decode_message(decrypted)
+            else:
+                return utils.decode_dict(json.loads(file.read()))
 
     def insert(self, key: str | bytes, value: Any, save: bool = True):
         if not isinstance(key, (str, bytes)):
@@ -85,10 +90,13 @@ class Database:
 
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         with open(self.path, "w") as file:
-            writer = csv.writer(file)
-            encoded = utils.encode_message(self.data)
-            iv, cipher, tag = encode_database(encoded, self.key)
-            writer.writerow([iv.hex(), cipher.hex(), tag.hex()])
+            if self.cipher:
+                writer = csv.writer(file)
+                encoded = utils.encode_message(self.data)
+                iv, cipher, tag = encode_database(encoded, self.key)
+                writer.writerow([iv.hex(), cipher.hex(), tag.hex()])
+            else:
+                file.write(json.dumps(utils.encode_dict(self.data)))
 
     def has(self, key: str | bytes) -> bool:
         if not isinstance(key, (str, bytes)):

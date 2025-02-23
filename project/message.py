@@ -23,6 +23,7 @@ SUCCESS = "success"
 
 X3DH_BUNDLE_REQUEST = "x3dh_request"
 X3DH_FORWARD = "x3dh_reaction"
+X3DH_REQUEST_KEYS = "x3dh_keys"
 
 
 class Message:

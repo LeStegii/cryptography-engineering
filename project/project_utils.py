@@ -1,5 +1,6 @@
 import threading
 import time
+from traceback import print_exc
 
 import utils
 from project.message import Message
@@ -16,6 +17,7 @@ def is_valid_message(message: Message) -> bool:
         message.dict()
         return True
     except:
+        print_exc()
         return False
 
 
@@ -31,7 +33,7 @@ def check_username(username: str) -> bool:
 def generate_initial_x3dh_keys():
     ik, IPK = utils.generate_signature_key_pair()
     sk, SPK = utils.generate_signature_key_pair()
-    one_time_prekeys = generate_one_time_pre_keys(1)
+    one_time_prekeys = generate_one_time_pre_keys(5)
 
     return {
         "ik": ik,

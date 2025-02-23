@@ -13,7 +13,7 @@ from project import project_utils
 from project.client import x3dh
 from project.database import Database
 from project.message import Message, MESSAGE, REGISTER, LOGIN, IDENTITY, ANSWER_SALT, REQUEST_SALT, ERROR, \
-    SUCCESS, STATUS, NOT_REGISTERED, REGISTERED, X3DH_BUNDLE_REQUEST, X3DH_FORWARD
+    SUCCESS, STATUS, NOT_REGISTERED, REGISTERED, X3DH_BUNDLE_REQUEST, X3DH_FORWARD, X3DH_REQUEST_KEYS
 from project.project_utils import is_valid_message, debug
 
 enable_debug = True
@@ -37,7 +37,8 @@ class Client:
             ANSWER_SALT: self.handle_answer_salt,
             MESSAGE: self.handle_message,
             X3DH_BUNDLE_REQUEST: self.handle_x3dh_bundle_answer,
-            X3DH_FORWARD: self.handle_x3dh_forward
+            X3DH_FORWARD: self.handle_x3dh_forward,
+            X3DH_REQUEST_KEYS: self.handle_x3dh_key_request
         }
 
         # Add event to signal when to stop threads
@@ -102,7 +103,8 @@ class Client:
         try:
             debug("You can now send messages to the server.")
             debug("Type 'exit' to close the connection.")
-            debug("Type '<target> <msg>' to chat.")
+            debug("Type 'x3dh <target>' to initiate a key exchange.")
+            debug("Type 'msg <target> <message>' to chat.")
             while True:
                 msg = input()
                 if msg.lower() == "exit":
@@ -145,7 +147,7 @@ class Client:
         self.username = input("Enter your username: ")
         debug(f"Connected to server {self.host}:{self.port} as {self.username}.")
 
-        self.database = Database(f"db/{self.username}/database.csv", f"db/{self.username}/key.txt")
+        self.database = Database(f"db/{self.username}/database.json", f"db/{self.username}/key.txt")
 
         self.receive_thread = threading.Thread(target=self.receive_message, daemon=True)
         self.receive_thread.start()
@@ -253,6 +255,11 @@ class Client:
         The key bundle is received after requesting it from the server.
         """
         content = message.dict()
+
+        if content.get("status") == ERROR:
+            debug(f"Failed to request key bundle: {content.get("error")}")
+            return True
+
         key_bundle_b = content.get("key_bundle")
         if not key_bundle_b:
             debug(f"Received invalid key bundle for {content.get("owner")} from server.")
@@ -306,6 +313,9 @@ class Client:
         cipher: bytes = content.get("cipher")
         tag: bytes = content.get("tag")
         sender: str = content.get("sender")
+        keys.get("oks").pop(0)
+        if len(keys.get("oks")) == 0:
+            debug("No more one time prekeys left.")
 
         shared_secret = x3dh.x3dh_key_reaction(IPK_A, EPK_A, ik_B, sk_B, ok_B)
         try:
@@ -322,6 +332,26 @@ class Client:
             debug(f"Failed to decrypt message from {sender}. Generating shared secret failed.")
 
         return False
+
+    def handle_x3dh_key_request(self, message: Message) -> bool:
+        """Called when the server doesn't have one time prekeys for the user."""
+
+        if message.dict().get("status") == ERROR:
+            debug("Failed to request key bundle from server.")
+            return True
+        elif message.dict().get("status") == SUCCESS:
+            debug("Server accepted new one time prekeys.")
+            return True
+
+        keys = project_utils.generate_one_time_pre_keys(5)
+        oks = [ok for ok, _ in keys]
+
+        OPKs = [OPK for _, OPK in keys]
+
+        self.load_or_gen_keys()["OPKs"].extend(OPKs)
+        self.load_or_gen_keys()["oks"].extend(oks)
+        self.send("server", {"OPKs": OPKs}, X3DH_REQUEST_KEYS)
+        return True
 
     def handle_unknown(self, message: Message):
         debug(f"{message.sender} sent message of unknown type '{message.type}'. Closing connection to be safe.")

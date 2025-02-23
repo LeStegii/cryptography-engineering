@@ -9,7 +9,7 @@ from typing import Optional
 import utils
 from project.database import Database
 from project.message import MESSAGE, Message, STATUS, REGISTER, REQUEST_SALT, ANSWER_SALT, IDENTITY, LOGIN, ERROR, \
-    SUCCESS, REGISTERED, NOT_REGISTERED, X3DH_BUNDLE_REQUEST, X3DH_FORWARD
+    SUCCESS, REGISTERED, NOT_REGISTERED, X3DH_BUNDLE_REQUEST, X3DH_FORWARD, X3DH_REQUEST_KEYS
 from project.project_utils import is_valid_message, debug, check_username
 
 
@@ -21,7 +21,7 @@ class Server:
         self.sockets: dict[tuple[str, int], ssl.SSLSocket] = {}  # List of connected clients (addr, socket)
         self.connections: dict[str, tuple[str, int]] = {}  # List of connected clients (username, addr)
 
-        self.database = Database("db/database.csv", "db/server-key.txt")
+        self.database = Database("db/database.json", "db/server-key.txt")
 
         # Set all users to logged out (in case the server crashed)
         for user in self.database.keys():
@@ -33,7 +33,8 @@ class Server:
             REQUEST_SALT: self.handle_request_salt,
             MESSAGE: self.handle_message,
             X3DH_BUNDLE_REQUEST: self.handle_x3dh_bundle_request,
-            X3DH_FORWARD: self.handle_x3dh_forward
+            X3DH_FORWARD: self.handle_x3dh_forward,
+            X3DH_REQUEST_KEYS: self.handle_x3dh_key_shortage
         }
 
     def username(self, addr: tuple[str, int]) -> Optional[str]:
@@ -120,12 +121,21 @@ class Server:
     def is_logged_in(self, username: str) -> bool:
         return self.database.has(username) and self.database.get(username).get("logged_in") == True
 
+    def add_offline_message(self, username: str, message: Message):
+        if self.is_registered(username):
+            if "offline_messages" not in self.database.get(username):
+                self.database.update(username, {"offline_messages": [message]})
+            else:
+                self.database.get(username).get("offline_messages").append(message)
+
     def handle_client(self, client_socket: ssl.SSLSocket, addr: tuple[str, int]):
         try:
 
             debug(f"Handling client {addr}. Checking it's identity.")
             if not self.check_identity(client_socket, addr):
                 return
+
+            username = self.username(addr)
 
             while True:
                 received_bytes = client_socket.recv(8192)
@@ -135,6 +145,14 @@ class Server:
                 message = Message.from_bytes(received_bytes)
 
                 if is_valid_message(message):
+
+                    if not message.sender == username:
+                        debug(f"{message.sender} ({addr}) tried to send a message as {username}.")
+                        break
+
+                    if not self.is_logged_in(message.sender) and message.type not in [IDENTITY, REGISTER, LOGIN, REQUEST_SALT]:
+                        debug(f"{message.sender} ({addr}) tried to send a message with type '{message.type}' without being logged in.")
+                        break
 
                     type = message.type
                     if message.type:
@@ -217,11 +235,6 @@ class Server:
         debug(f"{message.sender} ({addr}) sent message of unknown type '{message.type}'.")
 
     def handle_message(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
-        if not self.is_logged_in(message.sender):
-            debug(f"{message.sender} ({addr}) tried to send a message without being logged in.")
-            self.send(message.sender, {"status": ERROR, "error": "You must be logged in to send messages."}, MESSAGE)
-            return
-
         if not self.is_registered(message.receiver):
             debug(f"{message.sender} ({addr}) tried to send a message to an unregistered user ({message.receiver}).")
             self.send(message.sender, {"status": ERROR, "error": f"{message.receiver} is not registered."}, MESSAGE)
@@ -252,24 +265,45 @@ class Server:
         debug(f"{message.sender} ({addr}) sent a key request for {target}. Sending keys.")
 
         if len(keys.get("OPKs")) == 0:
-            debug(f"{target} has no one-time prekeys left. Requesting new ones.")
-            # TODO: Implement one-time prekey generation
+            debug(f"{target} has no one-time prekeys left.")
+            # Check if online
+            if self.is_logged_in(message.sender):
+                debug(f"{target} is online. Requesting keys.")
+                self.send(target, {}, X3DH_REQUEST_KEYS)
+                self.send(message.sender, {"status": ERROR, "error": f"{target} doesn't have keys left. Try again."}, X3DH_BUNDLE_REQUEST)
+            else:
+                debug(f"{target} is offline. Saving message for later and notifying sender.")
+                self.add_offline_message(target, message)
+                self.send(message.sender, {"status": ERROR, "error": f"{target} doesn't have keys left and is offline."}, X3DH_BUNDLE_REQUEST)
 
-        try:
 
-            key_bundle = {
-                "IPK": keys.get("IPK"),
-                "SPK": keys.get("SPK"),
-                "OPK": keys.get("OPKs")[0],
-                "sigma": keys.get("sigma")
-            }
+        else:
+            try:
 
-            self.send(message.sender, {"status": SUCCESS, "key_bundle": key_bundle, "owner": target}, X3DH_BUNDLE_REQUEST)
+                key_bundle = {
+                    "IPK": keys.get("IPK"),
+                    "SPK": keys.get("SPK"),
+                    "OPK": keys.get("OPKs")[0],
+                    "sigma": keys.get("sigma")
+                }
 
-        except Exception:
-            traceback.print_exc()
-            debug(f"Failed to send keys to {message.sender}.")
+                keys.get("OPKs").pop(0)
 
+                self.send(message.sender, {"status": SUCCESS, "key_bundle": key_bundle, "owner": target}, X3DH_BUNDLE_REQUEST)
+
+            except Exception:
+                traceback.print_exc()
+                debug(f"Failed to send keys to {message.sender}.")
+
+    def handle_x3dh_key_shortage(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
+        """Called when a user sends new keys because they ran out of one-time prekeys."""
+        OPKs = message.dict().get("OPKs")
+        if not OPKs or not isinstance(OPKs, list) or len(OPKs) == 0:
+            debug(f"{message.sender} ({addr}) sent new keys without any one-time prekeys.")
+        else:
+            debug(f"{message.sender} ({addr}) sent new keys. Saving them.")
+            self.database.get(message.sender).get("keys").get("OPKs").extend(OPKs)
+            self.send(message.sender, {"status": SUCCESS}, X3DH_REQUEST_KEYS)
 
     def handle_x3dh_forward(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
         """Called after the client received a key bundle and wants to react to it so the other user can be notified."""

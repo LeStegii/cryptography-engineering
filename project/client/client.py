@@ -328,10 +328,8 @@ class Client:
 
             return True
         except Exception as e:
-            traceback.print_exc()
             debug(f"Failed to decrypt message from {sender}. Generating shared secret failed.")
-
-        return False
+            return True
 
     def handle_x3dh_key_request(self, message: Message) -> bool:
         """Called when the server doesn't have one time prekeys for the user."""

@@ -118,7 +118,26 @@ def decompress(value: bytes) -> bytes:
     """Decompress a compressed string."""
     return zlib.decompress(value)
 
-# Short type prefixes for efficiency
+def encode_list(value: list) -> str:
+    string = ""
+    for item in value:
+        item_type = type(item)
+        prefix, encode, _ = TYPE_MAP.get(item_type, ("U", lambda x: json.dumps(x), lambda x: json.loads(x)))
+        encoded = encode(item)
+        string += f"{prefix}:{encoded};"
+    return string
+
+def decode_list(encoded: str) -> list:
+    decoded = []
+    for item in encoded.split(";"):
+        if not item:
+            continue
+        prefix, value = item.split(":", 1)
+        value_type = type_for_prefix(prefix)
+        _, _, decode = TYPE_MAP.get(value_type, ("U", lambda x: json.dumps(x), lambda x: json.loads(x)))
+        decoded.append(decode(value))
+    return decoded
+
 TYPE_MAP = {
     None: ("N", lambda value: "", lambda encoded: None),
     str: ("S", lambda value: value, lambda encoded: encoded),
@@ -149,7 +168,7 @@ TYPE_MAP = {
     Point: ("P", lambda value: value.to_bytes().hex(), lambda encoded: Point.from_bytes(bytes.fromhex(encoded), CURVE)),
     Message: ("M", lambda value: value.to_bytes().hex(), lambda encoded: Message.from_bytes(bytes.fromhex(encoded))),
     dict: ("D", lambda value: encode_message(value).hex(), lambda encoded: decode_message(bytes.fromhex(encoded))),
-    list: ("L", lambda value: ";".join(TYPE_MAP.get(type(item))[0] + ":" + TYPE_MAP.get(type(item))[1](item) for item in value), lambda encoded: [TYPE_MAP.get(type_for_prefix(item.split(":")[0]))[2](item.split(":")[1]) for item in encoded.split(";")])
+    list: ("L", encode_list, decode_list)
 }
 
 
@@ -182,7 +201,10 @@ def decode_dict(encoded: dict[str, str]) -> dict[str, Any]:
     return decoded
 
 def type_for_prefix(prefix):
-    return [t for t, (p, _, _) in TYPE_MAP.items() if p == prefix][0]
+    try:
+        return [t for t, (p, _, _) in TYPE_MAP.items() if p == prefix][0]
+    except IndexError:
+        print(f"Unknown type prefix: {prefix}")
 
 def aes_gcm_encrypt(key, plaintext, associated_data):
     iv = os.urandom(12)

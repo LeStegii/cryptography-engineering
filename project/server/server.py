@@ -191,6 +191,10 @@ class Server:
             if salted_password == self.database.get(message.sender).get("salted_password"):
                 debug(f"{message.sender}'s ({addr}) password is correct. User is now logged in.")
                 self.send(message.sender, {"status": SUCCESS}, LOGIN)
+                if "offline_messages" in self.database.get(message.sender):
+                    for offline_message in self.database.get(message.sender).get("offline_messages"):
+                        self.send_bytes(offline_message.to_bytes(), message.sender)
+                    self.database.update(message.sender, {"offline_messages": []})
                 self.database.update(message.sender, {"logged_in": True})
             else:
                 debug(f"{message.sender}'s ({addr}) password is incorrect!")
@@ -267,13 +271,13 @@ class Server:
         if len(keys.get("OPKs")) == 0:
             debug(f"{target} has no one-time prekeys left.")
             # Check if online
-            if self.is_logged_in(message.sender):
+            if self.is_logged_in(target):
                 debug(f"{target} is online. Requesting keys.")
                 self.send(target, {}, X3DH_REQUEST_KEYS)
                 self.send(message.sender, {"status": ERROR, "error": f"{target} doesn't have keys left. Try again."}, X3DH_BUNDLE_REQUEST)
             else:
                 debug(f"{target} is offline. Saving message for later and notifying sender.")
-                self.add_offline_message(target, message)
+                self.add_offline_message(target, Message(utils.encode_message({}), "server", target, X3DH_REQUEST_KEYS))
                 self.send(message.sender, {"status": ERROR, "error": f"{target} doesn't have keys left and is offline."}, X3DH_BUNDLE_REQUEST)
 
 
@@ -322,7 +326,10 @@ class Server:
         message.dict()["sender"] = sender
 
         debug(f"{message.sender} ({addr}) forwarded an x3dh message to {target}.")
-        self.send(target, message.dict(), X3DH_FORWARD)
+        if self.is_logged_in(target):
+            self.send(target, message.dict(), X3DH_FORWARD)
+        else:
+            self.add_offline_message(target, Message(utils.encode_message(message.dict()), "server", target, X3DH_FORWARD))
 
 
     def get_or_gen_salt(self, sender: str) -> bytes:

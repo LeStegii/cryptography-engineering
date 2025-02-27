@@ -11,6 +11,9 @@ from project.database import Database
 from project.message import MESSAGE, Message, STATUS, REGISTER, REQUEST_SALT, ANSWER_SALT, IDENTITY, LOGIN, ERROR, \
     SUCCESS, REGISTERED, NOT_REGISTERED, X3DH_BUNDLE_REQUEST, X3DH_FORWARD, X3DH_REQUEST_KEYS
 from project.project_utils import is_valid_message, debug, check_username
+import project.server.handler.x3dh_handler as x3dh_handler
+import project.server.handler.login_handler as login_handler
+import project.server.handler.message_handler as message_handler
 
 
 class Server:
@@ -28,13 +31,13 @@ class Server:
             self.database.update(user, {"logged_in": False})
 
         self.handlers: dict[str, any] = {
-            REGISTER: self.handle_register,
-            LOGIN: self.handle_login,
-            REQUEST_SALT: self.handle_request_salt,
-            MESSAGE: self.handle_message,
-            X3DH_BUNDLE_REQUEST: self.handle_x3dh_bundle_request,
-            X3DH_FORWARD: self.handle_x3dh_forward,
-            X3DH_REQUEST_KEYS: self.handle_x3dh_key_shortage
+            REGISTER: login_handler.handle_register,
+            LOGIN: login_handler.handle_login,
+            REQUEST_SALT: login_handler.handle_request_salt,
+            MESSAGE: message_handler.handle_message,
+            X3DH_BUNDLE_REQUEST: x3dh_handler.handle_x3dh_bundle_request,
+            X3DH_FORWARD: x3dh_handler.handle_x3dh_forward,
+            X3DH_REQUEST_KEYS: x3dh_handler.handle_x3dh_key_shortage
         }
 
     def username(self, addr: tuple[str, int]) -> Optional[str]:
@@ -163,7 +166,7 @@ class Server:
                             continue
 
                         handler = self.handlers.get(type, self.handle_unknown)
-                        handler(message, client_socket, addr)
+                        handler(self, message, client_socket, addr)
                     continue
                 else:
                     debug(f"Client {addr} sent an invalid message. Closing connection.")
@@ -180,157 +183,10 @@ class Server:
             self.sockets.pop(addr, None)
             debug(f"Connection with {addr} closed.")
 
-    def handle_login(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
-        content = message.dict()
-        if not self.is_registered(message.sender):
-            debug(f"{message.sender}'s ({addr}) tried to login but isn't registered.")
-            self.send(message.sender, {"status": NOT_REGISTERED}, LOGIN)
-        else:
-            debug(f"{message.sender} ({addr}) sent login request, checking password...")
-            salted_password = content.get("salted_password")
-            if salted_password == self.database.get(message.sender).get("salted_password"):
-                debug(f"{message.sender}'s ({addr}) password is correct. User is now logged in.")
-                self.send(message.sender, {"status": SUCCESS}, LOGIN)
-                if "offline_messages" in self.database.get(message.sender):
-                    for offline_message in self.database.get(message.sender).get("offline_messages"):
-                        self.send_bytes(offline_message.to_bytes(), message.sender)
-                    self.database.update(message.sender, {"offline_messages": []})
-                self.database.update(message.sender, {"logged_in": True})
-            else:
-                debug(f"{message.sender}'s ({addr}) password is incorrect!")
-                self.send(message.sender, {"status": ERROR, "error": "Password incorrect."}, LOGIN)
 
-    def handle_register(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
-        content = message.dict()
-        if self.is_registered(message.sender):
-            debug(f"{message.sender} ({addr}) tried to register, but the user is already registered.")
-            self.send(message.sender, {"status": ERROR, "error": "User is already registered."}, REGISTER)
-            return
-
-        user_known = self.database.has(message.sender)
-        salt_set = user_known and self.database.get(message.sender).get("salt")
-
-        debug(f"{message.sender} ({addr}) is trying to register.")
-
-        salt = self.get_or_gen_salt(message.sender)
-        if not salt_set:
-            debug(f"Creating salt for {message.sender} ({addr}).")
-            self.database.update(message.sender, {"salt": salt})
-
-        debug(f"Saving password for {message.sender} ({addr}). Sending salt to client.")
-        password = content.get("password")
-        key_bundle = content.get("keys")
-
-        if not password or not key_bundle or not isinstance(key_bundle, dict) or not isinstance(password, str):
-            debug(f"{message.sender} ({addr}) sent invalid registration data.")
-            self.send(message.sender, {"status": ERROR, "error": "Invalid registration data."}, REGISTER)
-            return
-
-        salted_password = utils.salt_password(password, self.database.get(message.sender).get("salt"))
-        self.database.update(message.sender,
-                             {"salted_password": salted_password, "keys": key_bundle, "registered": True})
-        self.send(message.sender, {"status": SUCCESS, "salt": salt}, REGISTER)
-
-    def handle_request_salt(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
-        debug(f"{addr} sent REQUEST_SALT as {message.sender}. Sending salt.")
-        self.send(message.sender, {"salt": self.get_or_gen_salt(message.sender)}, ANSWER_SALT)
 
     def handle_unknown(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
         debug(f"{message.sender} ({addr}) sent message of unknown type '{message.type}'.")
-
-    def handle_message(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
-        if not self.is_registered(message.receiver):
-            debug(f"{message.sender} ({addr}) tried to send a message to an unregistered user ({message.receiver}).")
-            self.send(message.sender, {"status": ERROR, "error": f"{message.receiver} is not registered."}, MESSAGE)
-            return
-
-        debug(f"{message.sender} ({addr}) sent a message to {message.receiver}.")
-        self.send_bytes(message.to_bytes(), message.receiver)  # Forward the message to the recipient
-
-    def handle_x3dh_bundle_request(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
-        """Called when a client requests a key bundle."""
-        target = message.dict().get("target")
-        if not target or not check_username(target):
-            debug(f"{message.sender} ({addr}) sent a key request without a valid target.")
-            self.send(message.sender, {"status": ERROR, "error": "No valid target specified."}, X3DH_BUNDLE_REQUEST)
-            return
-
-        if not self.is_registered(target):
-            debug(f"{message.sender} ({addr}) sent a key request to an unregistered user ({target}).")
-            self.send(message.sender, {"status": ERROR, "error": f"{target} is not registered."}, X3DH_BUNDLE_REQUEST)
-            return
-
-        keys = self.database.get(target).get("keys")
-        if not keys:
-            debug(f"{message.sender} ({addr}) sent a key request to {target}, but the user has no keys (something went wrong here!).")
-            self.send(message.sender, {"status": ERROR, "error": f"Key request for {target} failed."}, X3DH_BUNDLE_REQUEST)
-            return
-
-        debug(f"{message.sender} ({addr}) sent a key request for {target}. Sending keys.")
-
-        if len(keys.get("OPKs")) == 0:
-            debug(f"{target} has no one-time prekeys left.")
-            # Check if online
-            if self.is_logged_in(target):
-                debug(f"{target} is online. Requesting keys.")
-                self.send(target, {}, X3DH_REQUEST_KEYS)
-                self.send(message.sender, {"status": ERROR, "error": f"{target} doesn't have keys left. Try again."}, X3DH_BUNDLE_REQUEST)
-            else:
-                debug(f"{target} is offline. Saving message for later and notifying sender.")
-                self.add_offline_message(target, Message(utils.encode_message({}), "server", target, X3DH_REQUEST_KEYS))
-                self.send(message.sender, {"status": ERROR, "error": f"{target} doesn't have keys left and is offline."}, X3DH_BUNDLE_REQUEST)
-
-
-        else:
-            try:
-
-                key_bundle = {
-                    "IPK": keys.get("IPK"),
-                    "SPK": keys.get("SPK"),
-                    "OPK": keys.get("OPKs")[0],
-                    "sigma": keys.get("sigma")
-                }
-
-                keys.get("OPKs").pop(0)
-                self.database.save()
-
-                self.send(message.sender, {"status": SUCCESS, "key_bundle": key_bundle, "owner": target}, X3DH_BUNDLE_REQUEST)
-
-            except Exception:
-                traceback.print_exc()
-                debug(f"Failed to send keys to {message.sender}.")
-
-    def handle_x3dh_key_shortage(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
-        """Called when a user sends new keys because they ran out of one-time prekeys."""
-        OPKs = message.dict().get("OPKs")
-        if not OPKs or not isinstance(OPKs, list) or len(OPKs) == 0:
-            debug(f"{message.sender} ({addr}) sent new keys without any one-time prekeys.")
-        else:
-            debug(f"{message.sender} ({addr}) sent new keys. Saving them.")
-            self.database.get(message.sender).get("keys").get("OPKs").extend(OPKs)
-            self.send(message.sender, {"status": SUCCESS}, X3DH_REQUEST_KEYS)
-
-    def handle_x3dh_forward(self, message: Message, client: SSLSocket, addr: tuple[str, int]):
-        """Called after the client received a key bundle and wants to react to it so the other user can be notified."""
-        target = message.dict().get("target")
-        sender = message.sender
-        if not target or not check_username(target):
-            debug(f"{message.sender} ({addr}) wants to forward an x3dh message without a valid target.")
-            self.send(message.sender, {"status": ERROR, "error": "No valid target specified."}, X3DH_FORWARD)
-            return
-
-        if not self.is_registered(target):
-            debug(f"{message.sender} ({addr}) wants to forward an x3dh message to an unregistered user ({target}).")
-            self.send(message.sender, {"status": ERROR, "error": f"{target} is not registered."}, X3DH_FORWARD)
-            return
-
-        message.dict()["sender"] = sender
-
-        debug(f"{message.sender} ({addr}) forwarded an x3dh message to {target}.")
-        if self.is_logged_in(target):
-            self.send(target, message.dict(), X3DH_FORWARD)
-        else:
-            self.add_offline_message(target, Message(utils.encode_message(message.dict()), "server", target, X3DH_FORWARD))
 
 
     def get_or_gen_salt(self, sender: str) -> bytes:

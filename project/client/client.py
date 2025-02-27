@@ -130,7 +130,7 @@ class Client:
                         if not text or len(text.strip()) == 0:
                             debug("Empty messages aren't allowed.")
                             continue
-                        if not self.database.get(receiver) or not self.database.get(receiver).get("shared_secret"):
+                        if not self.database.get("shared_secrets") or not self.database.get("shared_secrets").get(receiver):
                             debug(f"{receiver} is not in the database, request their key bundle first!")
                         else:
                             debug(f"Sending message {text}...") # TODO
@@ -162,11 +162,11 @@ class Client:
             self.send_thread.join()
 
     def login(self, password: str) -> bool:
-        salt = self.database.get(self.username).get("salt")
+        salt = self.database.get("salt")
         if not salt:
             debug("Salt not found in database. This should not happen. Please request it again.")
             return False
-        salted_password = utils.salt_password(password, self.database.get(self.username).get("salt"))
+        salted_password = utils.salt_password(password, self.database.get("salt"))
         self.send("server", {"salted_password": salted_password}, LOGIN)
         return True
 
@@ -199,7 +199,7 @@ class Client:
     def handle_register(self, message: Message) -> bool:
         if message.dict().get("status") == SUCCESS:
             salt = message.dict().get("salt")
-            self.database.insert(self.username, {"salt": salt})
+            self.database.insert("salt", salt)
             debug(f"Received salt from server.")
             debug("User registered successfully. You can now login.")
             password = input("Enter your password: ")
@@ -224,7 +224,7 @@ class Client:
 
     def handle_answer_salt(self, message: Message) -> bool:
         salt = message.dict().get("salt")
-        self.database.insert(self.username, {"salt": salt})
+        self.database.insert("salt", salt)
         password = input("Received salt for login. Please enter your password: ")
         if not self.login(password):
             debug("Error logging in.")
@@ -281,7 +281,7 @@ class Client:
             debug("Computing shared secret...")
             ek_A, EPK_A = utils.generate_signature_key_pair()
             shared_secret = x3dh.x3dh_key(ik_A, ek_A, IPK_B, SPK_B, OPK_B)
-            self.database.insert(content.get("owner"), {"shared_secret": shared_secret})
+            self.database.update("shared_secrets", {content.get("owner"): shared_secret})
             debug("Sending reaction to server...")
             debug(f"Shared secret computed and saved for {content.get('owner')}: {shared_secret.hex()}")
             iv, cipher, tag = utils.aes_gcm_encrypt(shared_secret, self.username.encode(), IPK_A.to_pem() + IPK_B.to_pem())
@@ -314,6 +314,8 @@ class Client:
         tag: bytes = content.get("tag")
         sender: str = content.get("sender")
         keys.get("oks").pop(0)
+        keys.get("OPKs").pop(0)
+        self.database.save()
         if len(keys.get("oks")) == 0:
             debug("No more one time prekeys left.")
 
@@ -322,7 +324,7 @@ class Client:
             decrypted = utils.aes_gcm_decrypt(shared_secret, iv, cipher, IPK_A.to_pem() + IPK_B.to_pem(), tag)
             if decrypted == sender.encode():
                 debug(f"Succesfully computed shared secret with {sender}: {shared_secret.hex()}")
-                self.database.update(sender, {"shared_secret": shared_secret})
+                self.database.update("shared_secrets", {sender: shared_secret})
             else:
                 debug(f"Failed to decrypt message from {sender}. Generating shared secret failed.")
 

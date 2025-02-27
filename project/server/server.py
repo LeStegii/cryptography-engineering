@@ -292,6 +292,7 @@ class Server:
                 }
 
                 keys.get("OPKs").pop(0)
+                self.database.save()
 
                 self.send(message.sender, {"status": SUCCESS, "key_bundle": key_bundle, "owner": target}, X3DH_BUNDLE_REQUEST)
 

@@ -175,28 +175,34 @@ TYPE_MAP = {
 def encode_message(message: dict[str, Any]) -> bytes:
     return compress(json.dumps(encode_dict(message)).encode())
 
+def encode_value(value: Any) -> str:
+    value_type = type(value)
+    prefix, encode, _ = TYPE_MAP.get(value_type, ("U", lambda x: json.dumps(x), lambda x: json.loads(x)))
+
+    return f"{prefix}:{encode(value)}"
 
 def encode_dict(message: dict[str, Any]) -> dict[str, str]:
     encoded = {}
     for key, value in message.items():
-        value_type = type(value)
-        prefix, encode, _ = TYPE_MAP.get(value_type, ("U", lambda x: json.dumps(x), lambda x: json.loads(x)))
-
-        encoded[key] = f"{prefix}:{encode(value)}"
+        encoded[key] = encode_value(value)
 
     return encoded
 
 def decode_message(encoded: bytes) -> dict[str, Any]:
     return decode_dict(json.loads(decompress(encoded).decode()))
 
+
+def decode_value(encoded: str) -> Any:
+    prefix, value = encoded.split(":", 1)
+    value_type = type_for_prefix(prefix)
+    _, _, decode = TYPE_MAP.get(value_type, ("U", lambda x: json.dumps(x), lambda x: json.loads(x)))
+
+    return decode(value)
+
 def decode_dict(encoded: dict[str, str]) -> dict[str, Any]:
     decoded = {}
     for key, prefixed_value in encoded.items():
-        prefix, value = prefixed_value.split(":", 1)
-        value_type = type_for_prefix(prefix)
-        _, _, decode = TYPE_MAP.get(value_type, ("U", lambda x: json.dumps(x), lambda x: json.loads(x)))
-
-        decoded[key] = decode(value)
+        decoded[key] = decode_value(prefixed_value)
 
     return decoded
 

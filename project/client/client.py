@@ -351,6 +351,7 @@ class Client:
         self.load_or_gen_keys()["OPKs"].extend(OPKs)
         self.load_or_gen_keys()["oks"].extend(oks)
         self.send("server", {"OPKs": OPKs}, X3DH_REQUEST_KEYS)
+        self.database.save()
         return True
 
     def handle_unknown(self, message: Message):

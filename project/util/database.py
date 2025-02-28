@@ -4,7 +4,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-import utils
+from project.util import crypto_utils
+from project.util.serializer import serializer
 
 
 def load_or_create_key(key_path: str):
@@ -21,12 +22,13 @@ def load_or_create_key(key_path: str):
 
 
 def decrypt_database(cipher: bytes, key: bytes, iv: bytes, tag: bytes) -> bytes:
-    return utils.aes_gcm_decrypt(key, iv, cipher, b"DB", tag)
+    return crypto_utils.aes_gcm_decrypt(key, iv, cipher, b"DB", tag)
 
 
 def encrypt_database(content: bytes, key: bytes) -> tuple[bytes, bytes, bytes]:
-    iv, encrypted_password, tag = utils.aes_gcm_encrypt(key, content, b"DB")
+    iv, encrypted_password, tag = crypto_utils.aes_gcm_encrypt(key, content, b"DB")
     return iv, encrypted_password, tag
+
 
 def encode_database(data: dict[str, Any]) -> dict[str, str]:
     encoded = {}
@@ -34,10 +36,11 @@ def encode_database(data: dict[str, Any]) -> dict[str, str]:
         if isinstance(value, dict):
             encoded[key] = encode_database(value)
         elif isinstance(value, list):
-            encoded[key] = [utils.encode_value(item) for item in value]
+            encoded[key] = [serializer.encode_value(item) for item in value]
         else:
-            encoded[key] = utils.encode_value(value)
+            encoded[key] = serializer.encode_value(value)
     return encoded
+
 
 def decode_database(encoded: dict[str, str]) -> dict[str, Any]:
     decoded = {}
@@ -45,10 +48,11 @@ def decode_database(encoded: dict[str, str]) -> dict[str, Any]:
         if isinstance(value, dict):
             decoded[key] = decode_database(value)
         elif isinstance(value, list):
-            decoded[key] = [utils.decode_value(item) for item in value]
+            decoded[key] = [serializer.decode_value(item) for item in value]
         else:
-            decoded[key] = utils.decode_value(value)
+            decoded[key] = serializer.decode_value(value)
     return decoded
+
 
 class Database:
     def __init__(self, path: str, key_path: str, cipher: bool = False):
@@ -72,7 +76,7 @@ class Database:
                 tag: bytes = bytes.fromhex(cipher[2])
 
                 decrypted = decrypt_database(cipher_text, self.key, iv, tag)
-                return utils.decode_message(decrypted)
+                return serializer.decode_message(decrypted)
             else:
                 return decode_database(json.loads(file.read()))
 
@@ -101,7 +105,6 @@ class Database:
         if save:
             self.save()
 
-
     def delete(self, key: str | bytes, save: bool = True):
         if not isinstance(key, (str, bytes)):
             raise TypeError("Key must be a string or bytes")
@@ -113,7 +116,7 @@ class Database:
         with open(self.path, "w") as file:
             if self.cipher:
                 writer = csv.writer(file)
-                encoded = utils.encode_message(self.data)
+                encoded = serializer.encode_message(self.data)
                 iv, cipher, tag = encrypt_database(encoded, self.key)
                 writer.writerow([iv.hex(), cipher.hex(), tag.hex()])
             else:

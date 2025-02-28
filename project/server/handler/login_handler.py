@@ -1,7 +1,8 @@
 from ssl import SSLSocket
 
-from project.message import *
-from project.project_utils import debug
+from project.util import crypto_utils
+from project.util.message import *
+from project.util.utils import debug
 
 
 def handle_login(server, message: Message, client: SSLSocket, addr: tuple[str, int]):
@@ -50,9 +51,8 @@ def handle_register(server, message: Message, client: SSLSocket, addr: tuple[str
         server.send(message.sender, {"status": ERROR, "error": "Invalid registration data."}, REGISTER)
         return
 
-    salted_password = utils.salt_password(password, server.database.get(message.sender).get("salt"))
-    server.database.update(message.sender,
-                         {"salted_password": salted_password, "keys": key_bundle, "registered": True})
+    salted_password = crypto_utils.salt_password(password, server.database.get(message.sender).get("salt"))
+    server.database.update(message.sender, {"salted_password": salted_password, "keys": key_bundle, "registered": True})
     server.send(message.sender, {"status": SUCCESS, "salt": salt}, REGISTER)
 
 def handle_request_salt(server, message: Message, client: SSLSocket, addr: tuple[str, int]):

@@ -1,8 +1,9 @@
 import traceback
 from ssl import SSLSocket
 
-from project.message import *
-from project.project_utils import check_username, debug
+from project.util.message import *
+from project.util.serializer import serializer
+from project.util.utils import check_username, debug
 
 
 def handle_x3dh_bundle_request(server, message: Message, client: SSLSocket, addr: tuple[str, int]):
@@ -28,14 +29,13 @@ def handle_x3dh_bundle_request(server, message: Message, client: SSLSocket, addr
 
     if len(keys.get("OPKs")) == 0:
         debug(f"{target} has no one-time prekeys left.")
-        # Check if online
         if server.is_logged_in(target):
             debug(f"{target} is online. Requesting keys.")
             server.send(target, {}, X3DH_REQUEST_KEYS)
             server.send(message.sender, {"status": ERROR, "error": f"{target} doesn't have keys left. Try again."}, X3DH_BUNDLE_REQUEST)
         else:
             debug(f"{target} is offline. Saving message for later and notifying sender.")
-            server.add_offline_message(target, Message(utils.encode_message({}), "server", target, X3DH_REQUEST_KEYS))
+            server.add_offline_message(target, Message(serializer.encode_message({}), "server", target, X3DH_REQUEST_KEYS))
             server.send(message.sender, {"status": ERROR, "error": f"{target} doesn't have keys left and is offline."}, X3DH_BUNDLE_REQUEST)
 
     else:
@@ -87,4 +87,4 @@ def handle_x3dh_forward(server, message: Message, client: SSLSocket, addr: tuple
     if server.is_logged_in(target):
         server.send(target, message.dict(), X3DH_FORWARD)
     else:
-        server.add_offline_message(target, Message(utils.encode_message(message.dict()), "server", target, X3DH_FORWARD))
+        server.add_offline_message(target, Message(serializer.encode_message(message.dict()), "server", target, X3DH_FORWARD))

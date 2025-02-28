@@ -17,7 +17,7 @@ from ecdsa import util, VerifyingKey, SigningKey, ECDH
 from ecdsa.curves import NIST256p as CURVE
 from ecdsa.ellipticcurve import Point
 
-from project.message import Message
+from project.util.message import Message
 
 
 def generate_signature_key_pair() -> Tuple[SigningKey, VerifyingKey]:

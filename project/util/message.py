@@ -1,7 +1,7 @@
 from traceback import print_exc
 from typing import Optional
 
-import utils
+from project.util import utils
 
 MESSAGE = "message"
 FORWARD = "forward"
@@ -27,6 +27,7 @@ X3DH_REQUEST_KEYS = "x3dh_keys"
 
 
 class Message:
+
     def __init__(self, message: bytes, sender: str, receiver: str, type: str = MESSAGE):
         self.content = message
         self.sender = sender
@@ -41,7 +42,8 @@ class Message:
         return self.__str__()
 
     def to_bytes(self) -> bytes:
-        return utils.encode_message({
+        from project.util.serializer.serializer import encode_message
+        return encode_message({
             "content": self.content,
             "sender": self.sender,
             "receiver": self.receiver,
@@ -49,15 +51,38 @@ class Message:
         })
 
     def dict(self) -> dict[str, any]:
+        from project.util.serializer.serializer import decode_message
         if not self.content_dict:
-            self.content_dict = utils.decode_message(self.content)
+            self.content_dict = decode_message(self.content)
         return self.content_dict
 
     @staticmethod
     def from_bytes(data: bytes) -> Optional["Message"]:
+        from project.util.serializer.serializer import decode_message
         try:
-            message = utils.decode_message(data)
+            message = decode_message(data)
             return Message(message["content"], message["sender"], message["receiver"], message["type"])
         except:
             print_exc()
             return None
+
+
+def is_valid_message(message) -> bool:
+    if not message:
+        return False
+
+    if not message.sender or not message.receiver or not message.type:
+        return False
+
+    if not isinstance(message.sender, str) or not isinstance(message.receiver, str) or not isinstance(message.type, str):
+        return False
+
+    if not utils.check_username(message.sender) or not utils.check_username(message.receiver):
+        return False
+
+    try:
+        message.dict()
+        return True
+    except:
+        print_exc()
+        return False

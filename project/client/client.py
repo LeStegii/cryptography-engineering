@@ -8,13 +8,12 @@ from typing import Optional
 
 from ecdsa import SigningKey, VerifyingKey
 
-import utils
-from project import project_utils
-from project.client import x3dh
-from project.database import Database
-from project.message import Message, MESSAGE, REGISTER, LOGIN, IDENTITY, ANSWER_SALT, REQUEST_SALT, ERROR, \
-    SUCCESS, STATUS, NOT_REGISTERED, REGISTERED, X3DH_BUNDLE_REQUEST, X3DH_FORWARD, X3DH_REQUEST_KEYS
-from project.project_utils import is_valid_message, debug
+from project.util import x3dh_utils, crypto_utils
+from project.util.database import Database
+from project.util.message import Message, MESSAGE, REGISTER, LOGIN, IDENTITY, ANSWER_SALT, REQUEST_SALT, ERROR, \
+    SUCCESS, STATUS, NOT_REGISTERED, REGISTERED, X3DH_BUNDLE_REQUEST, X3DH_FORWARD, X3DH_REQUEST_KEYS, is_valid_message
+from project.util.serializer.serializer import encode_message
+from project.util.utils import debug
 
 enable_debug = True
 
@@ -65,7 +64,7 @@ class Client:
     def send(self, receiver: str, content: dict[str, any], type: str = MESSAGE):
         try:
             self.client_socket.send(
-                Message(message=utils.encode_message(content), sender=self.username, receiver=receiver,
+                Message(message=encode_message(content), sender=self.username, receiver=receiver,
                         type=type).to_bytes())
         except Exception:
             traceback.print_exc()
@@ -166,7 +165,7 @@ class Client:
         if not salt:
             debug("Salt not found in database. This should not happen. Please request it again.")
             return False
-        salted_password = utils.salt_password(password, self.database.get("salt"))
+        salted_password = crypto_utils.salt_password(password, self.database.get("salt"))
         self.send("server", {"salted_password": salted_password}, LOGIN)
         return True
 
@@ -275,16 +274,16 @@ class Client:
         SPK_B: VerifyingKey = key_bundle_b.get("SPK")
         OPK_B: VerifyingKey = key_bundle_b.get("OPK")
 
-        if not utils.ecdsa_verify(sigma_B, SPK_B.to_pem(), IPK_B):
+        if not crypto_utils.ecdsa_verify(sigma_B, SPK_B.to_pem(), IPK_B):
             debug("Invalid signature for SPK_B. Aborting X3DH.")
         else:
             debug("Computing shared secret...")
-            ek_A, EPK_A = utils.generate_signature_key_pair()
-            shared_secret = x3dh.x3dh_key(ik_A, ek_A, IPK_B, SPK_B, OPK_B)
+            ek_A, EPK_A = crypto_utils.generate_signature_key_pair()
+            shared_secret = x3dh_utils.x3dh_key(ik_A, ek_A, IPK_B, SPK_B, OPK_B)
             self.database.update("shared_secrets", {content.get("owner"): shared_secret})
             debug("Sending reaction to server...")
             debug(f"Shared secret computed and saved for {content.get('owner')}: {shared_secret.hex()}")
-            iv, cipher, tag = utils.aes_gcm_encrypt(shared_secret, self.username.encode(), IPK_A.to_pem() + IPK_B.to_pem())
+            iv, cipher, tag = crypto_utils.aes_gcm_encrypt(shared_secret, self.username.encode(), IPK_A.to_pem() + IPK_B.to_pem())
             self.send("server", {
                 "target": content.get("owner"),
                 "IPK": IPK_A,
@@ -319,9 +318,9 @@ class Client:
         if len(keys.get("oks")) == 0:
             debug("No more one time prekeys left.")
 
-        shared_secret = x3dh.x3dh_key_reaction(IPK_A, EPK_A, ik_B, sk_B, ok_B)
+        shared_secret = x3dh_utils.x3dh_key_reaction(IPK_A, EPK_A, ik_B, sk_B, ok_B)
         try:
-            decrypted = utils.aes_gcm_decrypt(shared_secret, iv, cipher, IPK_A.to_pem() + IPK_B.to_pem(), tag)
+            decrypted = crypto_utils.aes_gcm_decrypt(shared_secret, iv, cipher, IPK_A.to_pem() + IPK_B.to_pem(), tag)
             if decrypted == sender.encode():
                 debug(f"Succesfully computed shared secret with {sender}: {shared_secret.hex()}")
                 self.database.update("shared_secrets", {sender: shared_secret})
@@ -343,7 +342,7 @@ class Client:
             debug("Server accepted new one time prekeys.")
             return True
 
-        keys = project_utils.generate_one_time_pre_keys(5)
+        keys = crypto_utils.generate_one_time_pre_keys(5)
         oks = [ok for ok, _ in keys]
 
         OPKs = [OPK for _, OPK in keys]
@@ -361,7 +360,7 @@ class Client:
     def load_or_gen_keys(self) -> dict[str, SigningKey, VerifyingKey]:
         keys = self.database.get("keys")
         if not keys:
-            keys = project_utils.generate_initial_x3dh_keys()
+            keys = x3dh_utils.generate_initial_x3dh_keys()
             self.database.insert("keys", keys)
         return keys
 

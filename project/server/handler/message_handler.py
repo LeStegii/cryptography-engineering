@@ -1,7 +1,7 @@
 from ssl import SSLSocket
 
-from project.message import *
-from project.project_utils import debug
+from project.util.message import *
+from project.util.utils import debug
 
 
 def handle_message(server, message: Message, client: SSLSocket, addr: tuple[str, int]):

@@ -49,7 +49,7 @@ def handle_register(client, message: Message) -> bool:
         debug(f"Received salt from client.")
         debug("User registered successfully. You can now login.")
         password = input("Enter your password: ")
-        if not client.login(password):
+        if not login(client, password):
             debug("Error logging in.")
             return False
     elif message.dict().get("status") == ERROR:

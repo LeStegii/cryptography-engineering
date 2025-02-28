@@ -34,6 +34,12 @@ def handle_x3dh_bundle_answer(client, message: Message) -> bool:
     if not crypto_utils.ecdsa_verify(sigma_B, SPK_B.to_pem(), IPK_B):
         debug("Invalid signature for SPK_B. Aborting X3DH.")
     else:
+        key_bundles = client.database.get("key_bundles")
+        if not key_bundles:
+            key_bundles = {content.get("owner"): {"SPK": SPK_B}}
+            client.database.update("key_bundles", key_bundles)
+        else:
+            key_bundles.update({content.get("owner"): {"SPK": SPK_B}})
         debug("Computing shared secret...")
         ek_A, EPK_A = crypto_utils.generate_signature_key_pair()
         shared_secret = x3dh_utils.x3dh_key(ik_A, ek_A, IPK_B, SPK_B, OPK_B)

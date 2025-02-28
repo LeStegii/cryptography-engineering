@@ -36,7 +36,7 @@ def encode_database(data: dict[str, Any]) -> dict[str, str]:
         if isinstance(value, dict):
             encoded[key] = encode_database(value)
         elif isinstance(value, list):
-            encoded[key] = [serializer.encode_value(item) for item in value]
+            encoded[key] = [encode_database(item) if type(item) == dict else serializer.encode_value(item) for item in value]
         else:
             encoded[key] = serializer.encode_value(value)
     return encoded
@@ -48,7 +48,7 @@ def decode_database(encoded: dict[str, str]) -> dict[str, Any]:
         if isinstance(value, dict):
             decoded[key] = decode_database(value)
         elif isinstance(value, list):
-            decoded[key] = [serializer.decode_value(item) for item in value]
+            decoded[key] = [decode_database(item) if type(item) == dict else serializer.decode_value(item) for item in value]
         else:
             decoded[key] = serializer.decode_value(value)
     return decoded

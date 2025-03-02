@@ -69,6 +69,11 @@ def ecdsa_verify(signature: bytes, message: bytes, public_key: VerifyingKey):
         return False
 
 
+def kdf_chain(ck: bytes) -> Tuple[bytes, bytes]:
+    derived = hkdf_extract(b'', ck, length=64)
+    return derived[:32], derived[32:]
+
+
 def hkdf_extract(salt: bytes, input_key_material: bytes, length=32):
     hkdf_extract = HKDF(
         algorithm=SHA256(),

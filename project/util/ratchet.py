@@ -16,16 +16,27 @@ class DoubleRatchetState:
         self.index = 0
         self.last_sender = "ME" if initialized_by_me else "THEM"
 
-    def is_new_sequence(self) -> bool:
-        return self.last_sender == "THEM"
+    def is_new_sequence(self, Y: VerifyingKey) -> bool:
+        return self.Y is None or self.Y.to_string() != Y.to_string()
+
+    def ratchet_step(self, Y: VerifyingKey):
+        self.x, self.X = generate_signature_key_pair()
+        DH = power_sk_vk(self.x, Y)
+        self.Y = Y
+        return DH
 
     def encrypt(self, plaintext: bytes) -> dict[str, bytes | VerifyingKey | int]:
-        DH = power_sk_vk(self.x, self.Y) if self.is_new_sequence() else b""
+        if self.last_sender == "THEM":
+            DH = self.ratchet_step(self.Y)
+        else:
+            DH = b""
+
         mk, ck = kdf_chain(DH + self.ck)
         self.ck = ck
 
+        # Encrypt message
         iv, cipher, tag = crypto_utils.aes_gcm_encrypt(mk, plaintext, b"AD")
-        message =  {
+        message = {
             "cipher": cipher,
             "iv": iv,
             "tag": tag,
@@ -39,7 +50,12 @@ class DoubleRatchetState:
     def decrypt(self, message: dict[str, bytes | VerifyingKey | int]) -> bytes:
         self.index = message["index"]
         Y = message["X"]
-        DH = power_sk_vk(self.x, Y) if self.is_new_sequence() else b""
+
+        if self.is_new_sequence(Y):
+            DH = self.ratchet_step(Y)
+        else:
+            DH = b""
+
         mk, ck = kdf_chain(DH + self.ck)
         self.ck = ck
         self.last_sender = "THEM"
@@ -51,7 +67,7 @@ class DoubleRatchetState:
         return {
             "x": self.x.to_string().hex(),
             "X": self.X.to_string().hex(),
-            "Y": self.Y.to_string().hex(),
+            "Y": self.Y.to_string().hex() if self.Y else "",
             "ck": self.ck.hex(),
             "index": self.index,
             "last_sender": self.last_sender
@@ -63,13 +79,11 @@ class DoubleRatchetState:
             root_key=bytes.fromhex(data["ck"]),
             x=SigningKey.from_string(bytes.fromhex(data["x"])),
             X=VerifyingKey.from_string(bytes.fromhex(data["X"])),
-            Y=VerifyingKey.from_string(bytes.fromhex(data["Y"])),
+            Y=VerifyingKey.from_string(bytes.fromhex(data["Y"])) if data["Y"] else None,
             initialized_by_me=data["last_sender"] == "ME"
         )
         drs.index = data["index"]
-        drs.new_sequence = data["new_sequence"]
         return drs
-
 
 
 if __name__ == "__main__":
@@ -78,7 +92,7 @@ if __name__ == "__main__":
     root_key = os.urandom(32)
 
     rs_A = DoubleRatchetState(root_key, x, X, Y, initialized_by_me=True)
-    rs_B = DoubleRatchetState(root_key, y, Y, X, initialized_by_me=False)
+    rs_B = DoubleRatchetState(root_key, y, Y, None, initialized_by_me=False)
 
     print("A", rs_A.to_dict())
     print("B", rs_B.to_dict())

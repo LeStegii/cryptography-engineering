@@ -65,8 +65,7 @@ class Client:
     def send(self, receiver: str, content: dict[str, any], type: str = MESSAGE):
         try:
             self.client_socket.send(
-                Message(message=encode_message(content), sender=self.username, receiver=receiver,
-                        type=type).to_bytes())
+                Message(message=encode_message(content), sender=self.username, receiver=receiver, type=type).to_bytes())
         except Exception:
             traceback.print_exc()
             debug("Failed to send the message.")
@@ -139,7 +138,6 @@ class Client:
             debug("Closing connection.")
             self.stop_event.set()
             self.client_socket.close()
-
 
     def start(self):
         self.connect()

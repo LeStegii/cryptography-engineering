@@ -1,6 +1,8 @@
 import traceback
 from ssl import SSLSocket
 
+from ecdsa import VerifyingKey
+
 from project.util.message import *
 from project.util.serializer import serializer
 from project.util.utils import check_username, debug
@@ -60,8 +62,9 @@ def handle_x3dh_bundle_request(server, message: Message, client: SSLSocket, addr
 def handle_x3dh_key_shortage(server, message: Message, client: SSLSocket, addr: tuple[str, int]):
     """Called when a user sends new keys because they ran out of one-time prekeys."""
     OPKs = message.dict().get("OPKs")
-    if not OPKs or not isinstance(OPKs, list) or len(OPKs) == 0:
-        debug(f"{message.sender} ({addr}) sent new keys without any one-time prekeys.")
+    if not OPKs or not isinstance(OPKs, list) or len(OPKs) == 0 or not all(isinstance(OPK, VerifyingKey) for OPK in OPKs):
+        debug(f"{message.sender} ({addr}) sent new OPKs, but the list is invalid.")
+        server.send(message.sender, {"status": ERROR, "error": "Invalid OPKs."}, X3DH_REQUEST_KEYS)
     else:
         debug(f"{message.sender} ({addr}) sent new keys. Saving them.")
         server.database.get(message.sender).get("keys").get("OPKs").extend(OPKs)
@@ -81,10 +84,12 @@ def handle_x3dh_forward(server, message: Message, client: SSLSocket, addr: tuple
         server.send(message.sender, {"status": ERROR, "error": f"{target} is not registered."}, X3DH_FORWARD)
         return
 
+    # Add the sender to the message, so the receiver knows who sent the message
     message.dict()["sender"] = sender
 
-    debug(f"{message.sender} ({addr}) forwarded an x3dh message to {target}.")
     if server.is_logged_in(target):
+        debug(f"{message.sender} ({addr}) forwarded an x3dh message to {target}.")
         server.send(target, message.dict(), X3DH_FORWARD)
     else:
+        debug(f"{message.sender} ({addr}) forwarded an x3dh message to offline user {target}. Saving it for later.")
         server.add_offline_message(target, Message(serializer.encode_message(message.dict()), "server", target, X3DH_FORWARD))

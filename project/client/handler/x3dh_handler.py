@@ -66,6 +66,18 @@ def handle_x3dh_forward(client, message: Message) -> bool:
     content = message.dict()
     debug(f"Received a forwarded x3dh message for {content.get('target')} from server.")
 
+    if not all(x in content for x in ["IPK", "SPK", "EPK", "OPK", "iv", "cipher", "tag", "sender"]):
+        debug(f"Received x3dh message with missing content {content.get('sender')}.")
+        return True
+
+    if not all(isinstance(content.get(x), bytes) for x in ["iv", "cipher", "tag"]):
+        debug(f"Received x3dh message with invalid ciphertext {content.get('sender')}.")
+        return True
+
+    if not all(isinstance(content.get(x), VerifyingKey) for x in ["IPK", "SPK", "EPK", "OPK"]):
+        debug(f"Received x3dh message with invalid keys {content.get('sender')}.")
+        return True
+
     keys = client.load_or_gen_keys()
     ik_B: SigningKey = keys["ik"]
     sk_B: SigningKey = keys["sk"]

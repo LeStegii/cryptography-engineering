@@ -31,7 +31,7 @@ def handle_status(client, message: Message) -> bool:
             "OPKs": keys["OPKs"],
             "sigma": keys["sigma"]
         }
-        debug("Sending registration request to client...")
+        debug("Sending registration request to server...")
         client.send("server", {"password": password, "keys": key_bundle}, REGISTER)
     elif content.get("status") == REGISTERED:
         debug("User registered. Requesting salt from client...")
@@ -45,6 +45,9 @@ def handle_status(client, message: Message) -> bool:
 def handle_register(client, message: Message) -> bool:
     if message.dict().get("status") == SUCCESS:
         salt = message.dict().get("salt")
+        if not salt or not isinstance(salt, bytes):
+            debug("Received invalid salt from server.")
+            return False
         client.database.insert("salt", salt)
         debug(f"Received salt from client.")
         debug("User registered successfully. You can now login.")
@@ -65,13 +68,16 @@ def handle_login(client, message: Message) -> bool:
         client.send_thread = threading.Thread(target=client.send_messages, daemon=True)
         client.send_thread.start()
     elif message.dict().get("status") == ERROR:
-        debug("Error logging in. Password might be incorrect.")
+        debug(f"Error logging in: {message.dict().get('error')}")
         return False
     return True
 
 
 def handle_answer_salt(client, message: Message) -> bool:
     salt = message.dict().get("salt")
+    if not salt or not isinstance(salt, bytes):
+        debug("Received invalid salt from server.")
+        return False
     client.database.insert("salt", salt)
     password = input("Received salt for login. Please enter your password: ")
     if not login(client, password):

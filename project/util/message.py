@@ -20,6 +20,7 @@ SEND_PASSWORD = "send_password"
 
 ERROR = "error"
 SUCCESS = "success"
+REQUEST = "request"
 
 X3DH_BUNDLE_REQUEST = "x3dh_request"
 X3DH_FORWARD = "x3dh_reaction"

@@ -108,7 +108,7 @@ class Database:
     def delete(self, key: str | bytes, save: bool = True):
         if not isinstance(key, (str, bytes)):
             raise TypeError("Key must be a string or bytes")
-        del self.data[key if isinstance(key, str) else key.decode()]
+        self.data.pop(key if isinstance(key, str) else key.decode())
 
     def save(self):
 

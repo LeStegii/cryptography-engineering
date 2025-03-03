@@ -10,11 +10,11 @@ from typing import Optional
 import project.server.handler.login_handler as login_handler
 import project.server.handler.message_handler as message_handler
 import project.server.handler.x3dh_handler as x3dh_handler
-from project.server.handler import identity_handler
+from project.server.handler import identity_handler, reset_handler
 from project.util.serializer import serializer
 from project.util.database import Database
 from project.util.message import MESSAGE, Message, REGISTER, REQUEST_SALT, IDENTITY, LOGIN, X3DH_BUNDLE_REQUEST, X3DH_FORWARD, X3DH_REQUEST_KEYS, \
-    is_valid_message
+    is_valid_message, RESET
 from project.util.utils import debug
 
 
@@ -42,7 +42,8 @@ class Server:
             MESSAGE: message_handler.handle_message,
             X3DH_BUNDLE_REQUEST: x3dh_handler.handle_x3dh_bundle_request,
             X3DH_FORWARD: x3dh_handler.handle_x3dh_forward,
-            X3DH_REQUEST_KEYS: x3dh_handler.handle_x3dh_key_shortage
+            X3DH_REQUEST_KEYS: x3dh_handler.handle_x3dh_key_shortage,
+            RESET: reset_handler.handle_reset
         }
 
     def username(self, addr: tuple[str, int]) -> Optional[str]:
@@ -238,7 +239,6 @@ class Server:
                     debug(f"Client {addr} sent an invalid message. Closing connection.")
                     break
         except Exception as e:
-            traceback.print_exc()
             debug(f"Error with client {addr}: {e}")
         finally:
             # Close connection and log out user

@@ -8,11 +8,11 @@ from typing import Optional
 
 from ecdsa import SigningKey, VerifyingKey
 
-from project.client.handler import login_handler, message_handler, x3dh_handler
+from project.client.handler import login_handler, message_handler, x3dh_handler, reset_handler
 from project.util import x3dh_utils
 from project.util.database import Database
 from project.util.message import Message, MESSAGE, REGISTER, LOGIN, IDENTITY, ANSWER_SALT, STATUS, X3DH_BUNDLE_REQUEST, X3DH_FORWARD, X3DH_REQUEST_KEYS, \
-    is_valid_message
+    is_valid_message, RESET
 from project.util.serializer.serializer import encode_message
 from project.util.utils import debug
 
@@ -38,7 +38,8 @@ class Client:
             MESSAGE: message_handler.handle_message,
             X3DH_BUNDLE_REQUEST: x3dh_handler.handle_x3dh_bundle_answer,
             X3DH_FORWARD: x3dh_handler.handle_x3dh_forward,
-            X3DH_REQUEST_KEYS: x3dh_handler.handle_x3dh_key_request
+            X3DH_REQUEST_KEYS: x3dh_handler.handle_x3dh_key_request,
+            RESET: reset_handler.handle_reset
         }
 
         # Add event to signal when to stop threads
@@ -121,10 +122,27 @@ class Client:
                         continue
 
                     if type == "x3dh":
+                        if receiver == "server":
+                            debug("You cannot initiate a key exchange with the server.")
+                            continue
+                        if self.database.get("shared_secrets") and self.database.get("shared_secrets").get(receiver):
+                            debug(f"Already have shared secret with {receiver}. Use 'reset {receiver}' to reset or 'msg {receiver} <message>' to send a message.")
+                            continue
                         debug(f"Requesting key bundle for {receiver}...")
                         self.send("server", {"target": receiver}, X3DH_BUNDLE_REQUEST)
 
+                    elif type == 'reset':
+                        if receiver == "server":
+                            self.send("server", {"target": receiver}, RESET)
+                            debug("Sent a reset message to the server. Waiting for logout.")
+                            continue
+
+                        reset_handler.reset(self, receiver)
+
                     elif type == "msg" or type == "message" or type == "send" and len(split) > 3:
+                        if receiver == "server":
+                            debug("You cannot send a message to the server.")
+                            continue
                         text = " ".join(split[2:])
                         if not message_handler.send_message(self, receiver, text):
                             debug("Failed to send message.")

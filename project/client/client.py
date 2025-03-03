@@ -9,8 +9,7 @@ from typing import Optional
 from ecdsa import SigningKey, VerifyingKey
 
 from project.client.handler import login_handler, message_handler, x3dh_handler
-from project.util import x3dh_utils, crypto_utils
-from project.util.crypto_utils import power_sk_vk, KDF
+from project.util import x3dh_utils
 from project.util.database import Database
 from project.util.message import Message, MESSAGE, REGISTER, LOGIN, IDENTITY, ANSWER_SALT, STATUS, X3DH_BUNDLE_REQUEST, X3DH_FORWARD, X3DH_REQUEST_KEYS, \
     is_valid_message
@@ -128,60 +127,19 @@ class Client:
 
                     elif type == "msg" or type == "message" or type == "send" and len(split) > 3:
                         text = " ".join(split[2:])
-                        if not text or len(text.strip()) == 0:
-                            debug("Empty messages aren't allowed.")
-                            continue
-                        if not self.database.get("shared_secrets") or not self.database.get("shared_secrets").get(receiver):
-                            debug(f"{receiver} is not in the database, request their key bundle first!")
-                            continue
+                        if not message_handler.send_message(self, receiver, text):
+                            debug("Failed to send message.")
 
-                        if not self.database.has("chats"):
-                            self.database.insert("chats", {})
-
-                        chat = self.database.get("chats").get(receiver, [])
-                        if not chat:
-                            self.database.insert("chats", {receiver: chat})
-
-                        index = len(chat)
-
-                        if index == 0:
-                            x, X = crypto_utils.generate_signature_key_pair()
-                            Y = self.database.get("key_bundles").get(receiver).get("SPK")  # Receiver's Signed PreKey
-                            ck = self.database.get("shared_secrets").get(receiver)
-                            DH = power_sk_vk(x, Y)  # Compute initial Diffie-Hellman
-
-                            chat.append({"X": X, "last": "ME", "ck": ck, "Y": Y, "x": x})  # Store state
-
-                        elif chat[-1].get("last") == "ME":
-                            # Continue message chain (no DH change)
-                            DH = b"\x00" * 32  # No new DH step
-                            x, X = chat[-1].get("X")
-                            ck = chat[-1].get("ck")
-
-                        else:
-                            # New ratchet step: Perform DH exchange
-                            DH = power_sk_vk(chat[-1].get("x"), chat[-1].get("Y"))
-                            x, X = crypto_utils.generate_signature_key_pair()
-                            ck = chat[-1].get("ck")
-
-                        # Key derivation for encryption
-                        ck1, mk1 = KDF(DH, ck)
-
-                        # Encrypt message
-                        iv, cipher, tag = crypto_utils.aes_gcm_encrypt(mk1, text.encode(), self.username.encode())
-
-                        # Store updated state
-                        chat.append({"X": X, "last": "ME", "ck": ck1, "Y": chat[-1].get("Y"), "x": x})
-                        self.database.insert("chats", {receiver: chat})
-
-                        # Send message
-                        self.send(receiver, {"X": X, "cipher": cipher, "iv": iv, "tag": tag}, MESSAGE)
                 else:
                     debug("Invalid message format. Please enter in the format '<type> <receiver> [<message>]'.")
 
         except Exception:
             traceback.print_exc()
             debug("Error sending messages.")
+            debug("Closing connection.")
+            self.stop_event.set()
+            self.client_socket.close()
+
 
     def start(self):
         self.connect()

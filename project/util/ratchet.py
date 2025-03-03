@@ -8,7 +8,16 @@ from project.util.crypto_utils import power_sk_vk, kdf_chain, generate_signature
 
 
 class DoubleRatchetState:
-    def __init__(self, root_key: bytes, x: SigningKey, X: VerifyingKey, Y: Optional[VerifyingKey] = None, initialized_by_me: bool = True):
+    def __init__(self, root_key: bytes, x: Optional[SigningKey], X: Optional[VerifyingKey], Y: Optional[VerifyingKey] = None, initialized_by_me: bool = True):
+        """
+        To initialize the DRS as a first time sender, set Y to the recipient's public key and leave x and X as None.
+        To initialize the DRS as a first time receiver, set x and X to your own key pair and leave Y as None, and set initialized_by_me to False.
+        :param root_key: The root key to derive the chain key from
+        :param x: Your own private key
+        :param X: Your own public key
+        :param Y: The other person's public key
+        :param initialized_by_me: Whether you are the one initializing the conversation
+        """
         self.x = x
         self.X = X
         self.Y = Y
@@ -16,18 +25,16 @@ class DoubleRatchetState:
         self.index = 0
         self.last_sender = "ME" if initialized_by_me else "THEM"
 
-    def is_new_sequence(self, Y: VerifyingKey) -> bool:
-        return self.Y is None or self.Y.to_string() != Y.to_string()
 
-    def ratchet_step(self, Y: VerifyingKey):
-        self.x, self.X = generate_signature_key_pair()
+    def compute_dh(self, Y: VerifyingKey):
         DH = power_sk_vk(self.x, Y)
         self.Y = Y
         return DH
 
     def encrypt(self, plaintext: bytes) -> dict[str, bytes | VerifyingKey | int]:
-        if self.last_sender == "THEM":
-            DH = self.ratchet_step(self.Y)
+        if self.index == 0 or self.last_sender == "THEM":
+            self.x, self.X = generate_signature_key_pair()
+            DH = self.compute_dh(self.Y)
         else:
             DH = b""
 
@@ -49,10 +56,10 @@ class DoubleRatchetState:
 
     def decrypt(self, message: dict[str, bytes | VerifyingKey | int]) -> bytes:
         self.index = message["index"]
-        Y = message["X"]
+        self.Y = message["X"]
 
-        if self.is_new_sequence(Y):
-            DH = self.ratchet_step(Y)
+        if self.index == 0 or self.last_sender == "ME":
+            DH = self.compute_dh(self.Y)
         else:
             DH = b""
 
@@ -65,9 +72,9 @@ class DoubleRatchetState:
 
     def to_dict(self) -> dict[str, str | int | bool]:
         return {
-            "x": self.x.to_string().hex(),
-            "X": self.X.to_string().hex(),
-            "Y": self.Y.to_string().hex() if self.Y else "",
+            "x": self.x.to_pem().hex() if self.x else None,
+            "X": self.X.to_pem().hex() if self.X else None,
+            "Y": self.Y.to_pem().hex() if self.Y else None,
             "ck": self.ck.hex(),
             "index": self.index,
             "last_sender": self.last_sender
@@ -77,9 +84,9 @@ class DoubleRatchetState:
     def from_dict(data: dict[str, str | int | bool]) -> "DoubleRatchetState":
         drs = DoubleRatchetState(
             root_key=bytes.fromhex(data["ck"]),
-            x=SigningKey.from_string(bytes.fromhex(data["x"])),
-            X=VerifyingKey.from_string(bytes.fromhex(data["X"])),
-            Y=VerifyingKey.from_string(bytes.fromhex(data["Y"])) if data["Y"] else None,
+            x=SigningKey.from_pem(bytes.fromhex(data["x"]).decode()) if data["x"] else None,
+            X=VerifyingKey.from_pem(bytes.fromhex(data["X"]).decode()) if data["X"] else None,
+            Y=VerifyingKey.from_pem(bytes.fromhex(data["Y"]).decode()) if data["Y"] else None,
             initialized_by_me=data["last_sender"] == "ME"
         )
         drs.index = data["index"]
@@ -91,29 +98,34 @@ if __name__ == "__main__":
     y, Y = generate_signature_key_pair()
     root_key = os.urandom(32)
 
-    rs_A = DoubleRatchetState(root_key, x, X, Y, initialized_by_me=True)
+    rs_A = DoubleRatchetState(root_key, None, None, Y, initialized_by_me=True)
     rs_B = DoubleRatchetState(root_key, y, Y, None, initialized_by_me=False)
-
-    print("A", rs_A.to_dict())
-    print("B", rs_B.to_dict())
 
     encrypted1 = rs_A.encrypt(b"Hey")
     encrypted2 = rs_A.encrypt(b"How are you?")
 
-    print("A", rs_A.to_dict())
-    print("B", rs_B.to_dict())
+    print(rs_B.decrypt(encrypted1))
+    print(rs_B.decrypt(encrypted2))
 
-    decrypted1 = rs_B.decrypt(encrypted1)
-    decrypted2 = rs_B.decrypt(encrypted2)
-    print(decrypted1, decrypted2)
+    encrypted3 = rs_B.encrypt(b"Good, thanks!")
+    encrypted4 = rs_B.encrypt(b"Want to meet up?")
 
-    print("A", rs_A.to_dict())
-    print("B", rs_B.to_dict())
+    print(rs_A.decrypt(encrypted3))
+    print(rs_A.decrypt(encrypted4))
 
+    encrypted5 = rs_A.encrypt(b"Sure, when?")
 
-    encrypted3 = rs_B.encrypt(b"Good, you?")
-    decrypted3 = rs_A.decrypt(encrypted3)
-    print(decrypted3)
+    print(rs_B.decrypt(encrypted5))
 
-    print("A", rs_A.to_dict())
-    print("B", rs_B.to_dict())
+    encrypted6 = rs_B.encrypt(b"Tomorrow?")
+    encrypted7 = rs_B.encrypt(b"Maybe 18:00?")
+    encrypted8 = rs_B.encrypt(b"Where?")
+
+    print(rs_A.decrypt(encrypted6))
+    print(rs_A.decrypt(encrypted7))
+    print(rs_A.decrypt(encrypted8))
+
+    encrypted9 = rs_A.encrypt(b"At the park")
+
+    print(rs_B.decrypt(encrypted9))
+

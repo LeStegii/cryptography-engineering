@@ -1,12 +1,30 @@
-from project.util import crypto_utils
-from project.util.crypto_utils import power_sk_vk, KDF
-from project.util.message import Message, is_valid_message, ERROR
+from ecdsa import VerifyingKey
+
+from project.util.message import Message, ERROR
+from project.util.ratchet import DoubleRatchetState
 from project.util.utils import debug
 
 
+def send_message(client, receiver: str, plaintext: str) -> bool:
+    if not plaintext or len(plaintext.strip()) == 0:
+        debug("Empty messages aren't allowed.")
+        return True
+
+    if not client.database.has("shared_secrets") or not client.database.get("shared_secrets").get(receiver):
+        debug(f"No shared secret found for {receiver}.")
+        return False
+
+    if not init_chat_sender(client, receiver, client.database.get("key_bundles").get(receiver).get("SPK")):
+        return False
+
+    drs = client.database.get("chats").get(receiver)
+    message = drs.encrypt(plaintext.encode())
+    client.send(receiver, message)
+    client.database.save()
+    return True
+
+
 def handle_message(client, message: Message) -> bool:
-    if not is_valid_message(message):
-        debug(f"Received invalid message from {message.sender}.")
 
     if message.sender == "server":
         if message.dict().get("status") == ERROR:
@@ -20,47 +38,51 @@ def handle_message(client, message: Message) -> bool:
         sender = message.sender
         database = client.database
 
-        if not database.get("chats"):
-            database.insert("chats", {})
+        init_chat_receiver(client, sender)
 
-        if sender not in database.get("chats"):
-            debug(f"No chat history with {sender}, initializing...")
-            database.insert("chats", {sender: []})
-
-        chat = database.get("chats")[sender]
-
-        if not chat or chat[-1].get("last") == "ME":
-            # New ratchet step: Compute new shared key
-            X = content["X"]
-            if not chat:
-                # First message from sender, no prior state
-                y, Y = crypto_utils.generate_signature_key_pair()
-                database.insert("key_bundles", {sender: {"SPK": Y}})
-            else:
-                y = chat[-1].get("x")
-
-            DH = power_sk_vk(y, X)  # Compute DH using our private key and sender's public key
-            ck = chat[-1].get("ck") if chat else database.get("shared_secrets").get(sender)
-
-            ck1, mk1 = KDF(DH, ck)  # Derive new chain key and message key
-            chat.append({"X": X, "last": "THEM", "ck": ck1, "Y": Y, "x": y})
-
-        else:
-            # Continue existing message chain
-            ck = chat[-1].get("ck")
-            ck1, mk1 = KDF(b"\x00" * 32, ck)  # No new DH exchange
-
-        # Decrypt message
-        iv, cipher, tag = content["iv"], content["cipher"], content["tag"]
+        drs = database.get("chats").get(sender)
         try:
-            plaintext = crypto_utils.aes_gcm_decrypt(mk1, cipher, iv, sender.encode(), tag)
-            print(f"Message from {sender}: {plaintext.decode()}")
+            plaintext = drs.decrypt(content)
+            debug(f"{sender}: {plaintext}")
         except Exception as e:
-            debug(f"Decryption failed: {e}")
+            debug(f"Failed to decrypt message from {sender}.")
             return False
-
-        # Store updated state
-        chat.append({"X": chat[-1].get("X"), "last": "THEM", "ck": ck1, "Y": chat[-1].get("Y"), "x": chat[-1].get("x")})
-        database.insert("chats", {sender: chat})
+        client.database.save()
 
         return True
+
+def init_chat_sender(client, receiver: str, SPK_B: VerifyingKey) -> bool:
+    if not client.database.has("chats"):
+        client.database.insert("chats", {})
+
+    if not client.database.get("chats").get(receiver):
+
+        if not client.database.has("shared_secrets") or not client.database.get("shared_secrets").get(receiver):
+            return False
+
+        if not client.database.has("key_bundles") or not client.database.get("key_bundles").get(receiver):
+            debug(f"No key bundle found for {receiver}.")
+            return False
+
+        root_key = client.database.get("shared_secrets").get(receiver)
+
+        drs = DoubleRatchetState(root_key, None, None, SPK_B, initialized_by_me=True)
+        client.database.update("chats", {receiver: drs})
+
+    return True
+
+def init_chat_receiver(client, sender: str) -> bool:
+    if not client.database.has("chats"):
+        client.database.insert("chats", {})
+
+    if not client.database.has("shared_secrets") or not client.database.get("shared_secrets").get(sender):
+        return False
+
+    root_key = client.database.get("shared_secrets").get(sender)
+
+    if not client.database.get("chats").get(sender):
+        sk, SPK = client.database.get("keys").get("sk"), client.database.get("keys").get("SPK")
+        drs = DoubleRatchetState(root_key, sk, SPK, initialized_by_me=False)
+        client.database.update("chats", {sender: drs})
+
+    return True

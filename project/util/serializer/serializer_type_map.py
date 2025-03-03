@@ -1,4 +1,5 @@
 import json
+from types import NoneType
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey, EllipticCurvePrivateKey
@@ -7,6 +8,7 @@ from ecdsa.curves import NIST256p as CURVE
 from ecdsa.ellipticcurve import Point
 
 from project.util.message import Message
+from project.util.ratchet import DoubleRatchetState
 
 
 def encode_list(value: list) -> str:
@@ -62,7 +64,7 @@ def type_for_prefix(prefix):
 
 
 TYPE_MAP = {
-    None: ("N", lambda value: "", lambda encoded: None),
+    NoneType: ("N", lambda value: "", lambda encoded: None),
     str: ("S", lambda value: value, lambda encoded: encoded),
     bool: ("B", lambda value: str(int(value)), lambda encoded: bool(int(encoded))),
     int: ("I", lambda value: str(value), lambda encoded: int(encoded)),
@@ -90,6 +92,7 @@ TYPE_MAP = {
     ),
     Point: ("P", lambda value: value.to_bytes().hex(), lambda encoded: Point.from_bytes(bytes.fromhex(encoded), CURVE)),
     Message: ("M", lambda value: value.to_bytes().hex(), lambda encoded: Message.from_bytes(bytes.fromhex(encoded))),
+    DoubleRatchetState: ("DRS", lambda value: encode_dict(value.to_dict()), lambda encoded: DoubleRatchetState.from_dict(decode_dict(encoded))),
     dict: ("D", encode_dict, decode_dict),
     list: ("L", encode_list, decode_list)
 }

@@ -24,6 +24,7 @@ def handle_x3dh_bundle_answer(client, message: Message) -> bool:
     keys = client.load_or_gen_keys()
     ik_A: SigningKey = keys["ik"]
     IPK_A: VerifyingKey = keys["IPK"]
+    SPK_A: VerifyingKey = keys["SPK"] # Not needed for X3DH, but for later use
     OPK_A: VerifyingKey = keys["OPKs"][0]
 
     sigma_B: bytes = key_bundle_b.get("sigma")
@@ -52,6 +53,7 @@ def handle_x3dh_bundle_answer(client, message: Message) -> bool:
             "IPK": IPK_A,
             "EPK": EPK_A,
             "OPK": OPK_A,
+            "SPK": SPK_A,
             "iv": iv,
             "cipher": cipher,
             "tag": tag
@@ -70,6 +72,7 @@ def handle_x3dh_forward(client, message: Message) -> bool:
     ok_B: SigningKey = keys["oks"][0]
     IPK_B: VerifyingKey = keys["IPK"]
     IPK_A: VerifyingKey = content.get("IPK")
+    SPK_A: VerifyingKey = content.get("SPK")
     EPK_A: VerifyingKey = content.get("EPK")
     OPK_A: VerifyingKey = content.get("OPK")
     iv: bytes = content.get("iv")
@@ -88,6 +91,7 @@ def handle_x3dh_forward(client, message: Message) -> bool:
         if decrypted == sender.encode():
             debug(f"Succesfully computed shared secret with {sender}: {shared_secret.hex()}")
             client.database.update("shared_secrets", {sender: shared_secret})
+            client.database.update("key_bundles", {sender: {"SPK": SPK_A}})
         else:
             debug(f"Failed to decrypt message from {sender}. Generating shared secret failed.")
 

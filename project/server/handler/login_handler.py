@@ -11,7 +11,12 @@ def handle_login(server, message: Message, client: SSLSocket, addr: tuple[str, i
         debug(f"{message.sender}'s ({addr}) tried to login but isn't registered.")
         server.send(message.sender, {"status": NOT_REGISTERED}, LOGIN)
     else:
-        debug(f"{message.sender} ({addr}) sent login request, checking password...")
+        debug(f"{message.sender} ({addr}) sent login request, checking attempts...")
+        if server.check_too_many_attempts(message.sender):
+            debug(f"{message.sender} ({addr}) has too many failed login attempts.")
+            server.send(message.sender, {"status": ERROR, "error": "Too many failed login attempts."}, LOGIN)
+            return
+        debug("Checking password...")
         salted_password = content.get("salted_password")
         if salted_password == server.database.get(message.sender).get("salted_password"):
             debug(f"{message.sender}'s ({addr}) password is correct. User is now logged in.")
@@ -23,6 +28,7 @@ def handle_login(server, message: Message, client: SSLSocket, addr: tuple[str, i
             server.database.update(message.sender, {"logged_in": True})
         else:
             debug(f"{message.sender}'s ({addr}) password is incorrect!")
+            server.add_login_attempt(message.sender)
             server.send(message.sender, {"status": ERROR, "error": "Password incorrect."}, LOGIN)
 
 def handle_register(server, message: Message, client: SSLSocket, addr: tuple[str, int]):

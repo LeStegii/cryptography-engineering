@@ -1,3 +1,4 @@
+import datetime
 import os
 import socket
 import ssl
@@ -30,6 +31,8 @@ class Server:
         # Set all users to logged out (in case the server crashed)
         for user in self.database.keys():
             self.database.update(user, {"logged_in": False})
+
+        self.login_attempts: dict[str, list[datetime.datetime]] = {}  # Dictionary to store login attempts
 
         # Handlers for different message types
         self.handlers: dict[str, any] = {
@@ -97,6 +100,30 @@ class Server:
         else:
             salt = self.database.get(sender).get("salt")
         return salt
+
+
+    def check_too_many_attempts(self, username: str) -> bool:
+        """
+        Checks if the user with the given name has made too many login attempts in the last 5 minutes.
+        :param username: The name of the user
+        :return: Whether the user has made too many login attempts
+        """
+        if not self.login_attempts.get(username):
+            return False
+
+        for attempt in self.login_attempts.get(username, []):
+            if attempt < datetime.datetime.now() - datetime.timedelta(minutes=5):
+                self.login_attempts.get(username).remove(attempt)
+
+        if len(self.login_attempts.get(username)) >= 3:
+            return True
+        return False
+
+    def add_login_attempt(self, username: str):
+        if not self.login_attempts.get(username):
+            self.login_attempts[username] = []
+
+        self.login_attempts.get(username).append(datetime.datetime.now())
 
     def start(self):
         try:

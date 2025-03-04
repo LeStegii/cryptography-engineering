@@ -10,11 +10,14 @@ def send_message(client, receiver: str, plaintext: str) -> bool:
         debug("Empty messages aren't allowed.")
         return True
 
-    if not client.database.has("shared_secrets") or not client.database.get("shared_secrets").get(receiver):
-        debug(f"No shared secret found for {receiver}. Initiate a chat using 'x3dh {receiver}'.")
-        return False
+    if not client.database.has("chats"):
+        client.database.insert("chats", {})
 
     if not init_chat_sender(client, receiver, client.database.get("key_bundles").get(receiver).get("SPK")):
+        return False
+
+    if not client.database.has("chats") or not client.database.get("chats").get(receiver):
+        debug(f"No shared secret found for {receiver}. Initiate a chat using 'init {receiver}'.")
         return False
 
     drs = client.database.get("chats").get(receiver)
@@ -43,10 +46,10 @@ def handle_message(client, message: Message) -> bool:
         drs = database.get("chats").get(sender)
         try:
             plaintext = drs.decrypt(content)
-            debug(f"{sender}: {plaintext}")
+            debug(f"{sender}: {plaintext.decode()}")
         except Exception as e:
             debug(f"Failed to decrypt message from {sender}.")
-            return False
+            return True
         client.database.save()
 
         return True
@@ -58,6 +61,7 @@ def init_chat_sender(client, receiver: str, SPK_B: VerifyingKey) -> bool:
     if not client.database.get("chats").get(receiver):
 
         if not client.database.has("shared_secrets") or not client.database.get("shared_secrets").get(receiver):
+            debug(f"No shared secret found for {receiver}. Initiate a chat using 'init {receiver}'.")
             return False
 
         if not client.database.has("key_bundles") or not client.database.get("key_bundles").get(receiver):
@@ -65,6 +69,9 @@ def init_chat_sender(client, receiver: str, SPK_B: VerifyingKey) -> bool:
             return False
 
         root_key = client.database.get("shared_secrets").get(receiver)
+        # Remove the shared secret from the database
+        client.database.get("shared_secrets").pop(receiver)
+        client.database.save()
 
         drs = DoubleRatchetState(root_key, None, None, SPK_B, initialized_by_me=True)
         client.database.update("chats", {receiver: drs})
@@ -79,6 +86,9 @@ def init_chat_receiver(client, sender: str) -> bool:
         return False
 
     root_key = client.database.get("shared_secrets").get(sender)
+    # Remove the shared secret from the database
+    client.database.get("shared_secrets").pop(sender)
+    client.database.save()
 
     if not client.database.get("chats").get(sender):
         sk, SPK = client.database.get("keys").get("sk"), client.database.get("keys").get("SPK")

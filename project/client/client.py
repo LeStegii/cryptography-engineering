@@ -103,8 +103,10 @@ class Client:
         try:
             debug("You can now send messages to the server.")
             debug("Type 'exit' to close the connection.")
-            debug("Type 'x3dh <target>' to initiate a key exchange.")
+            debug("Type 'init <target>' to initiate a key exchange and open a chat.")
             debug("Type 'msg <target> <message>' to chat.")
+            debug("Type 'reset <target>' to reset the chat with a user.")
+            debug("Type 'reset server' to delete your account.")
             while True:
                 msg = input()
                 if msg.lower() == "exit":
@@ -121,11 +123,11 @@ class Client:
                         debug("You cannot send messages to yourself.")
                         continue
 
-                    if type == "x3dh":
+                    if type == "init":
                         if receiver == "server":
                             debug("You cannot initiate a key exchange with the server.")
                             continue
-                        if self.database.get("shared_secrets") and self.database.get("shared_secrets").get(receiver):
+                        if self.database.get("chats") and self.database.get("chats").get(receiver):
                             debug(f"Already have shared secret with {receiver}. Use 'reset {receiver}' to reset or 'msg {receiver} <message>' to send a message.")
                             continue
                         debug(f"Requesting key bundle for {receiver}...")

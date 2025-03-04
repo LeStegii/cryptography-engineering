@@ -5,6 +5,7 @@ from ecdsa import VerifyingKey, SigningKey
 
 from project.util import crypto_utils
 from project.util.crypto_utils import power_sk_vk, kdf_chain, generate_signature_key_pair
+from project.util.utils import debug
 
 
 class DoubleRatchetState:
@@ -68,7 +69,11 @@ class DoubleRatchetState:
         self.last_sender = "THEM"
 
         iv, cipher, tag = message["iv"], message["cipher"], message["tag"]
-        return crypto_utils.aes_gcm_decrypt(mk, iv, cipher, b"AD", tag)
+        try:
+            return crypto_utils.aes_gcm_decrypt(mk, iv, cipher, b"AD", tag)
+        except Exception as e:
+            debug(f"Failed to decrypt message: {e}")
+            return b""
 
     def to_dict(self) -> dict[str, str | int | bool]:
         return {

@@ -1,3 +1,5 @@
+import traceback
+
 from ecdsa import SigningKey, VerifyingKey
 
 from project.util import crypto_utils, x3dh_utils
@@ -25,12 +27,12 @@ def handle_x3dh_bundle_answer(client, message: Message) -> bool:
     ik_A: SigningKey = keys["ik"]
     IPK_A: VerifyingKey = keys["IPK"]
     SPK_A: VerifyingKey = keys["SPK"] # Not needed for X3DH, but for later use
-    OPK_A: VerifyingKey = keys["OPKs"][0]
 
     sigma_B: bytes = key_bundle_b.get("sigma")
     IPK_B: VerifyingKey = key_bundle_b.get("IPK")
     SPK_B: VerifyingKey = key_bundle_b.get("SPK")
     OPK_B: VerifyingKey = key_bundle_b.get("OPK")
+
 
     if not crypto_utils.ecdsa_verify(sigma_B, SPK_B.to_pem(), IPK_B):
         debug("Invalid signature for SPK_B. Aborting X3DH.")
@@ -46,13 +48,13 @@ def handle_x3dh_bundle_answer(client, message: Message) -> bool:
         shared_secret = x3dh_utils.x3dh_key(ik_A, ek_A, IPK_B, SPK_B, OPK_B)
         client.database.update("shared_secrets", {content.get("owner"): shared_secret})
         debug("Sending reaction to server...")
-        debug(f"Shared secret computed and saved for {content.get('owner')}: {shared_secret.hex()}")
+        debug(f"Shared secret computed and saved for {content.get('owner')}.")
         iv, cipher, tag = crypto_utils.aes_gcm_encrypt(shared_secret, client.username.encode(), IPK_A.to_pem() + IPK_B.to_pem())
+
         client.send("server", {
             "target": content.get("owner"),
             "IPK": IPK_A,
             "EPK": EPK_A,
-            "OPK": OPK_A,
             "SPK": SPK_A,
             "iv": iv,
             "cipher": cipher,
@@ -66,7 +68,7 @@ def handle_x3dh_forward(client, message: Message) -> bool:
     content = message.dict()
     debug(f"Received a forwarded x3dh message for {content.get('target')} from server.")
 
-    if not all(x in content for x in ["IPK", "SPK", "EPK", "OPK", "iv", "cipher", "tag", "sender"]):
+    if not all(x in content for x in ["IPK", "SPK", "EPK", "iv", "cipher", "tag", "sender"]):
         debug(f"Received x3dh message with missing content {content.get('sender')}.")
         return True
 
@@ -74,8 +76,8 @@ def handle_x3dh_forward(client, message: Message) -> bool:
         debug(f"Received x3dh message with invalid ciphertext {content.get('sender')}.")
         return True
 
-    if not all(isinstance(content.get(x), VerifyingKey) for x in ["IPK", "SPK", "EPK", "OPK"]):
-        debug(f"Received x3dh message with invalid keys {content.get('sender')}.")
+    if not all(isinstance(content.get(x), VerifyingKey) for x in ["IPK", "SPK", "EPK"]):
+        debug(f"Received x3dh message with invalid keys from {content.get('sender')}.")
         return True
 
     keys = client.load_or_gen_keys()
@@ -86,7 +88,7 @@ def handle_x3dh_forward(client, message: Message) -> bool:
     IPK_A: VerifyingKey = content.get("IPK")
     SPK_A: VerifyingKey = content.get("SPK")
     EPK_A: VerifyingKey = content.get("EPK")
-    OPK_A: VerifyingKey = content.get("OPK")
+
     iv: bytes = content.get("iv")
     cipher: bytes = content.get("cipher")
     tag: bytes = content.get("tag")
@@ -95,21 +97,24 @@ def handle_x3dh_forward(client, message: Message) -> bool:
     keys.get("OPKs").pop(0)
     client.database.save()
     if len(keys.get("oks")) == 0:
-        debug("No more one time prekeys left.")
+        debug("No more one time prekeys left. Sending new ones to server.")
+        OPKs = add_new_pre_keys(client)
+        client.send("server", {"OPKs": OPKs}, X3DH_REQUEST_KEYS)
 
     shared_secret = x3dh_utils.x3dh_key_reaction(IPK_A, EPK_A, ik_B, sk_B, ok_B)
     try:
         decrypted = crypto_utils.aes_gcm_decrypt(shared_secret, iv, cipher, IPK_A.to_pem() + IPK_B.to_pem(), tag)
         if decrypted == sender.encode():
-            debug(f"Succesfully computed shared secret with {sender}: {shared_secret.hex()}")
+            debug(f"Succesfully computed shared secret with {sender}.")
             client.database.update("shared_secrets", {sender: shared_secret})
             client.database.update("key_bundles", {sender: {"SPK": SPK_A}})
         else:
-            debug(f"Failed to decrypt message from {sender}. Generating shared secret failed.")
+            debug(f"Decryption from {sender} is incorrect. Generating shared secret failed.")
 
         return True
     except Exception as e:
         debug(f"Failed to decrypt message from {sender}. Generating shared secret failed.")
+        traceback.print_exc()
         return True
 
 
@@ -123,13 +128,16 @@ def handle_x3dh_key_request(client, message: Message) -> bool:
         debug("Server accepted new one time prekeys.")
         return True
 
+    OPKs = add_new_pre_keys(client)
+    client.send("server", {"OPKs": OPKs}, X3DH_REQUEST_KEYS)
+    return True
+
+
+def add_new_pre_keys(client) -> list[VerifyingKey]:
     keys = crypto_utils.generate_one_time_pre_keys(5)
     oks = [ok for ok, _ in keys]
-
     OPKs = [OPK for _, OPK in keys]
-
     client.load_or_gen_keys()["OPKs"].extend(OPKs)
     client.load_or_gen_keys()["oks"].extend(oks)
-    client.send("server", {"OPKs": OPKs}, X3DH_REQUEST_KEYS)
     client.database.save()
-    return True
+    return OPKs

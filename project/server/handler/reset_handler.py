@@ -20,7 +20,7 @@ def handle_reset(server, message: Message, client: SSLSocket, addr: tuple[str, i
 
     if not utils.check_username(receiver) or not server.is_registered(receiver):
         debug(f"{message.sender} ({addr}) tried to send a reset message to an invalid user ({receiver}).")
-        server.send(message.sender, {"status": ERROR, "error": f"{message.receiver} is invalid."}, RESET)
+        server.send(message.sender, {"status": ERROR, "error": f"{receiver} is invalid."}, RESET)
         return
 
     debug(f"{message.sender} ({addr}) sent a reset message to {message.receiver}.")

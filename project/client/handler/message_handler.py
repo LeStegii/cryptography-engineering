@@ -11,7 +11,7 @@ def send_message(client, receiver: str, plaintext: str) -> bool:
         return True
 
     if not client.database.has("shared_secrets") or not client.database.get("shared_secrets").get(receiver):
-        debug(f"No shared secret found for {receiver}.")
+        debug(f"No shared secret found for {receiver}. Initiate a chat using 'x3dh {receiver}'.")
         return False
 
     if not init_chat_sender(client, receiver, client.database.get("key_bundles").get(receiver).get("SPK")):

@@ -2,7 +2,7 @@ import csv
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from project.util import crypto_utils
 from project.util.serializer import serializer
@@ -55,7 +55,9 @@ def decode_database(encoded: dict[str, str]) -> dict[str, Any]:
 
 
 class Database:
-    def __init__(self, path: str, key_path: str, cipher: bool = False):
+    def __init__(self, path: str, key_path: Optional[str] = None, cipher: bool = False):
+        if cipher and not key_path:
+            raise ValueError("Key path must be provided when cipher is enabled")
         self.cipher = cipher
         self.key: bytes = load_or_create_key(key_path) if cipher else b""
         self.path: str = path

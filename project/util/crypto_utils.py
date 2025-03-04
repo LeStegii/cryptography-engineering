@@ -126,8 +126,8 @@ def HMAC(key: bytes, content: bytes) -> bytes:
     return hmac.new(key, content, sha256).digest()
 
 
-def salt_password(password: str | bytes, salt: bytes) -> bytes:
-    return HMAC(salt, password.encode() if isinstance(password, str) else password)
+def salt_password(password: str | bytes, salt: bytes, pepper: bytes) -> bytes:
+    return HMAC(salt, (password.encode() if isinstance(password, str) else password) + pepper)
 
 def KDF(DH: bytes, ck: bytes) -> tuple[bytes, bytes]:
     key = hkdf_extract(salt=DH, input_key_material=ck, length=64)

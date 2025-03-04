@@ -10,7 +10,7 @@ def login(client, password: str) -> bool:
     if not salt:
         debug("Salt not found in database. This should not happen. Please request it again.")
         return False
-    salted_password = crypto_utils.salt_password(password, client.database.get("salt"))
+    salted_password = crypto_utils.salt_password(password, client.database.get("salt"), client.database.get("pepper"))
     client.send("server", {"salted_password": salted_password}, LOGIN)
     return True
 
@@ -45,11 +45,13 @@ def handle_status(client, message: Message) -> bool:
 def handle_register(client, message: Message) -> bool:
     if message.dict().get("status") == SUCCESS:
         salt = message.dict().get("salt")
-        if not salt or not isinstance(salt, bytes):
-            debug("Received invalid salt from server.")
+        pepper = message.dict().get("pepper")
+        if not all(value and isinstance(value, bytes) for value in [salt, pepper]):
+            debug("Received invalid salt/pepper from server.")
             return False
         client.database.insert("salt", salt)
-        debug(f"Received salt from client.")
+        client.database.insert("pepper", pepper)
+        debug(f"Received salt and pepper from server.")
         debug("User registered successfully. You can now login.")
         password = input("Enter your password: ")
         if not login(client, password):

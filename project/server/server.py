@@ -26,7 +26,8 @@ class Server:
         self.sockets: dict[tuple[str, int], ssl.SSLSocket] = {}  # List of connected clients (addr, socket)
         self.connections: dict[str, tuple[str, int]] = {}  # List of connected clients (username, addr)
 
-        self.database = Database("db/database.json", "db/server-key.txt")
+        self.database = Database("db/database.json")
+        self.peppers = Database("db/peppers.csv", "db/server-key-peppers.txt", True)
 
         # Set all users to logged out (in case the server crashed)
         for user in self.database.keys():

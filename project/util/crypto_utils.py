@@ -122,12 +122,12 @@ def aes_gcm_decrypt(key: bytes, iv: bytes, ciphertext: bytes, associated_data: b
 
     return plaintext
 
+
+def salt_password(password: str, salt: bytes, pepper: bytes) -> bytes:
+    return HMAC(salt, password.encode() + pepper)
+
 def HMAC(key: bytes, content: bytes) -> bytes:
     return hmac.new(key, content, sha256).digest()
-
-
-def salt_password(password: str | bytes, salt: bytes, pepper: bytes) -> bytes:
-    return HMAC(salt, (password.encode() if isinstance(password, str) else password) + pepper)
 
 def KDF(DH: bytes, ck: bytes) -> tuple[bytes, bytes]:
     key = hkdf_extract(salt=DH, input_key_material=ck, length=64)

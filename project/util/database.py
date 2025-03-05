@@ -131,3 +131,8 @@ class Database:
 
     def keys(self):
         return self.data.keys()
+
+    def clear(self, save: bool = True):
+        self.data.clear()
+        if save:
+            self.save()

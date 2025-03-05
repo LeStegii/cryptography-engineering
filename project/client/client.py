@@ -127,19 +127,17 @@ class Client:
                         if receiver == "server":
                             debug("You cannot initiate a key exchange with the server.")
                             continue
-                        if self.database.get("chats") and self.database.get("chats").get(receiver):
+                        if (self.database.get("chats") and self.database.get("chats").get(receiver)) or (self.database.get("shared_secrets") and self.database.get("shared_secrets").get(receiver)):
                             debug(f"Already have shared secret with {receiver}. Use 'reset {receiver}' to reset or 'msg {receiver} <message>' to send a message.")
                             continue
                         debug(f"Requesting key bundle for {receiver}...")
                         self.send("server", {"target": receiver}, X3DH_BUNDLE_REQUEST)
 
                     elif type == 'reset':
-                        if receiver == "server":
-                            self.send("server", {"target": receiver}, RESET)
-                            debug("Sent a reset message to the server. Waiting for logout.")
-                            continue
-
                         reset_handler.reset(self, receiver)
+                        if receiver == "server":
+                            debug("Account reset. Closing connection.")
+                            break
 
                     elif type == "msg" or type == "message" or type == "send" and len(split) > 3:
                         if receiver == "server":
@@ -148,14 +146,17 @@ class Client:
                         text = " ".join(split[2:])
                         if not message_handler.send_message(self, receiver, text):
                             debug("Failed to send message.")
+                    else:
+                        debug("Unknown command. Please use 'init', 'msg' or 'reset'.")
 
                 else:
-                    debug("Invalid message format. Please enter in the format '<type> <receiver> [<message>]'.")
+                    debug("Invalid message format. Please enter in the format '<type> [<receiver>]e [<message>]'.")
 
         except Exception:
             traceback.print_exc()
             debug("Error sending messages.")
             debug("Closing connection.")
+        finally:
             self.stop_event.set()
             self.client_socket.close()
 

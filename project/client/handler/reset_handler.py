@@ -18,6 +18,8 @@ def reset(client, receiver: str):
     client.send("server", {"target": receiver}, RESET)
     if receiver != "server":
         clear_from_db(client, receiver)
+    else:
+        client.database.clear()
 
 
 def clear_from_db(client, receiver: str):
